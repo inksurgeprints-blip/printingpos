@@ -2,16 +2,22 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 <<<<<<< HEAD
+<<<<<<< HEAD
     // Each anonymous device gets its own isolated data folder.
     // Good enough to get started; tighten this later if you add real staff logins.
     match /artifacts/{appId}/users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
 =======
+=======
+>>>>>>> bc314a8 (Replace with clean project files)
     // Single shared shop dataset. Only signed-in staff accounts (created by you
     // in the Firebase console - there's no public sign-up) can read or write.
     match /artifacts/{appId}/shop/{document=**} {
       allow read, write: if request.auth != null;
+<<<<<<< HEAD
 >>>>>>> 0707027 (Inksurge POS)
+=======
+>>>>>>> bc314a8 (Replace with clean project files)
     }
   }
 }
