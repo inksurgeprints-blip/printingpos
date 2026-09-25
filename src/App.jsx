@@ -117,6 +117,8 @@ export default function InksurgePOS() {
   
   // Navigation State
   const [activeView, setActiveView] = useState('pos'); // pos, orders, reports, settings
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile/tablet nav drawer
+  const [cartOpen, setCartOpen] = useState(false); // mobile/tablet order bottom-sheet
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState(null);
   
@@ -367,6 +369,7 @@ export default function InksurgePOS() {
     setCustomerName(order.customerName || '');
     setEditingOrderId(order.id);
     setActiveView('pos');
+    setCartOpen(true);
   };
 
   const confirmDeleteOrder = async () => {
@@ -1184,10 +1187,43 @@ export default function InksurgePOS() {
             </div>
           )}
         </div>
+
+        {/* Mobile/tablet trigger to open the order sheet */}
+        {cart.length > 0 && (
+          <button
+            onClick={() => setCartOpen(true)}
+            className="lg:hidden flex items-center justify-between px-5 py-4 bg-emerald-600 text-white shadow-[0_-4px_16px_rgba(0,0,0,0.18)] active:bg-emerald-700 transition-colors shrink-0"
+          >
+            <span className="flex items-center font-bold text-sm">
+              <span className="bg-white/20 rounded-full min-w-[24px] h-6 px-1.5 flex items-center justify-center text-xs mr-2">
+                {cart.reduce((sum, i) => sum + i.qty, 0)}
+              </span>
+              View Order
+            </span>
+            <span className="font-black text-base">₱{cartTotal.toFixed(2)}</span>
+          </button>
+        )}
       </div>
 
+      {/* Backdrop for the order sheet (mobile/tablet only) */}
+      {cartOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={() => setCartOpen(false)}
+        />
+      )}
+
       {/* Current Order Cart Sidebar */}
-      <div className="w-[440px] bg-white shadow-2xl flex flex-col z-20 border-l border-slate-200">
+      <div
+        className={`fixed inset-x-0 bottom-0 z-40 max-h-[88vh] bg-white shadow-2xl flex flex-col rounded-t-3xl transform transition-transform duration-200 ease-in-out
+          lg:static lg:z-20 lg:max-h-none lg:rounded-none lg:translate-y-0 lg:w-[380px] xl:w-[440px] lg:border-l lg:border-slate-200
+          ${cartOpen ? 'translate-y-0' : 'translate-y-full'}`}
+      >
+        {/* Drag handle (mobile/tablet only) */}
+        <div className="lg:hidden flex justify-center pt-2.5 pb-1">
+          <div className="w-10 h-1.5 bg-slate-300 rounded-full" />
+        </div>
+
         <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
           <h2 className="text-lg font-black text-slate-800 flex items-center">
             {editingOrderId ? (
@@ -1196,14 +1232,23 @@ export default function InksurgePOS() {
               'Current Order'
             )}
           </h2>
-          {cart.length > 0 && (
-            <button 
-              onClick={clearCart} 
-              className="flex items-center px-2.5 py-1 text-red-600 hover:bg-red-50 rounded-lg text-xs font-bold transition-colors border border-transparent hover:border-red-100"
+          <div className="flex items-center gap-1">
+            {cart.length > 0 && (
+              <button 
+                onClick={clearCart} 
+                className="flex items-center px-2.5 py-1 text-red-600 hover:bg-red-50 rounded-lg text-xs font-bold transition-colors border border-transparent hover:border-red-100"
+              >
+                <Trash2 size={14} className="mr-1"/> Clear All
+              </button>
+            )}
+            <button
+              onClick={() => setCartOpen(false)}
+              className="lg:hidden p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+              title="Close"
             >
-              <Trash2 size={14} className="mr-1"/> Clear All
+              <X size={18} />
             </button>
-          )}
+          </div>
         </div>
 
         {/* Cart Items List */}
@@ -1363,21 +1408,42 @@ export default function InksurgePOS() {
 
   return (
     <div className="flex h-screen bg-slate-900 font-sans text-slate-800">
+      {/* Backdrop for the nav drawer (mobile/tablet only) */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Left Navigation Sidebar */}
-      <div className="w-64 bg-slate-900 text-white flex flex-col shadow-2xl z-30 border-r border-slate-800">
-        <div className="p-6 border-b border-slate-800 flex items-center">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3 shadow-md shadow-blue-500/30">
-            <Printer size={22} className="text-white" />
+      <div
+        className={`fixed inset-y-0 left-0 z-40 w-72 max-w-[85vw] bg-slate-900 text-white flex flex-col shadow-2xl border-r border-slate-800 transform transition-transform duration-200 ease-in-out
+          lg:static lg:z-30 lg:w-64 lg:max-w-none lg:translate-x-0
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center">
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3 shadow-md shadow-blue-500/30">
+              <Printer size={22} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-lg font-black tracking-tight leading-none text-white">Inksurge Prints</h1>
+              <p className="text-[10px] text-slate-400 mt-1 font-semibold tracking-wider uppercase">Print • Copy • Scan</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg font-black tracking-tight leading-none text-white">Inksurge Prints</h1>
-            <p className="text-[10px] text-slate-400 mt-1 font-semibold tracking-wider uppercase">Print • Copy • Scan</p>
-          </div>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            title="Close menu"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         <nav className="flex-1 p-4 space-y-1.5">
           <button 
-            onClick={() => setActiveView('pos')}
+            onClick={() => { setActiveView('pos'); setSidebarOpen(false); }}
             className={`w-full flex items-center px-4 py-3 rounded-xl font-bold text-sm transition-all ${
               activeView === 'pos' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
@@ -1386,7 +1452,7 @@ export default function InksurgePOS() {
           </button>
           
           <button 
-            onClick={() => setActiveView('orders')}
+            onClick={() => { setActiveView('orders'); setSidebarOpen(false); }}
             className={`w-full flex items-center px-4 py-3 rounded-xl font-bold text-sm transition-all ${
               activeView === 'orders' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
@@ -1395,7 +1461,7 @@ export default function InksurgePOS() {
           </button>
           
           <button 
-            onClick={() => setActiveView('reports')}
+            onClick={() => { setActiveView('reports'); setSidebarOpen(false); }}
             className={`w-full flex items-center px-4 py-3 rounded-xl font-bold text-sm transition-all ${
               activeView === 'reports' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
@@ -1404,7 +1470,7 @@ export default function InksurgePOS() {
           </button>
           
           <button 
-            onClick={() => setActiveView('settings')}
+            onClick={() => { setActiveView('settings'); setSidebarOpen(false); }}
             className={`w-full flex items-center px-4 py-3 rounded-xl font-bold text-sm transition-all ${
               activeView === 'settings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
             }`}
@@ -1438,10 +1504,28 @@ export default function InksurgePOS() {
 
       {/* Main View Container */}
       <div className="flex-1 flex flex-col relative overflow-hidden bg-slate-100">
-        {activeView === 'pos' && renderPOSView()}
-        {activeView === 'orders' && <OrdersView />}
-        {activeView === 'reports' && <ReportsView />}
-        {activeView === 'settings' && <SettingsView />}
+        {/* Mobile/tablet top bar */}
+        <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-900 text-white shadow-md z-20 shrink-0">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 -ml-2 rounded-lg hover:bg-slate-800 transition-colors"
+            title="Open menu"
+          >
+            <AlignJustify size={22} />
+          </button>
+          <div className="flex items-center">
+            <Printer size={16} className="mr-2 text-blue-400" />
+            <span className="font-black text-sm tracking-tight">Inksurge Prints</span>
+          </div>
+          <div className="w-9" aria-hidden="true" />
+        </div>
+
+        <div className="flex-1 min-h-0">
+          {activeView === 'pos' && renderPOSView()}
+          {activeView === 'orders' && <OrdersView />}
+          {activeView === 'reports' && <ReportsView />}
+          {activeView === 'settings' && <SettingsView />}
+        </div>
       </div>
 
       {/* Delete Confirmation Modal */}
