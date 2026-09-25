@@ -5,7 +5,11 @@ import {
   Layers, AlignJustify, Calendar, RefreshCw, ArrowUp, ArrowDown, User, DollarSign, Download
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
+<<<<<<< HEAD
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+=======
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+>>>>>>> 0707027 (Inksurge POS)
 import { getFirestore, collection, doc, setDoc, onSnapshot, query, addDoc, deleteDoc, updateDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -51,6 +55,67 @@ const DEFAULT_PRODUCTS = [
   { id: 'p12', categoryId: 'cat_lam', name: 'A4\n(Lamination)', price: 70.00, unit: 'pc', imageUrl: '', order: 2 },
 ];
 
+<<<<<<< HEAD
+=======
+function LoginScreen({ onLogin, error, loading }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onLogin(email, password);
+  };
+
+  return (
+    <div className="flex flex-col h-screen items-center justify-center bg-slate-900 text-white px-4">
+      <div className="w-full max-w-sm bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
+        <div className="flex flex-col items-center mb-6">
+          <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center mb-3 shadow-md shadow-blue-500/30">
+            <Printer size={28} className="text-white" />
+          </div>
+          <h1 className="text-xl font-black tracking-tight">Inksurge Prints</h1>
+          <p className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-semibold">Staff Sign In</p>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-400 mb-1.5">Email</label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="you@inksurge.com"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-400 mb-1.5">Password</label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="********"
+            />
+          </div>
+          {error && (
+            <p className="text-red-400 text-xs font-semibold bg-red-950/50 border border-red-900 rounded-lg px-3 py-2">{error}</p>
+          )}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold py-2.5 rounded-lg text-sm transition-all shadow-lg shadow-blue-600/30"
+          >
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+>>>>>>> 0707027 (Inksurge POS)
 export default function InksurgePOS() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -77,6 +142,7 @@ export default function InksurgePOS() {
 
   useEffect(() => {
     let isMounted = true;
+<<<<<<< HEAD
     const authenticate = async () => {
       try {
         if (!auth) {
@@ -96,6 +162,19 @@ export default function InksurgePOS() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (isMounted) {
         setUser(currentUser || { uid: 'demo_user' });
+=======
+
+    if (!auth) {
+      // No Firebase configured (local preview) - skip login, run in demo mode.
+      setUser({ uid: 'demo_user' });
+      setLoading(false);
+      return () => { isMounted = false; };
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (isMounted) {
+        setUser(currentUser); // null until someone actually signs in
+>>>>>>> 0707027 (Inksurge POS)
         setLoading(false);
       }
     });
@@ -105,13 +184,38 @@ export default function InksurgePOS() {
     };
   }, []);
 
+<<<<<<< HEAD
+=======
+  const handleLogin = async (email, password) => {
+    setLoginError('');
+    setLoginLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err) {
+      setLoginError('Incorrect email or password.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    if (auth) signOut(auth);
+  };
+
+>>>>>>> 0707027 (Inksurge POS)
   useEffect(() => {
     if (!user || !db) return;
     const userId = user.uid;
 
+<<<<<<< HEAD
     const catRef = collection(db, 'artifacts', appId, 'users', userId, 'categories');
     const prodRef = collection(db, 'artifacts', appId, 'users', userId, 'products');
     const ordRef = collection(db, 'artifacts', appId, 'users', userId, 'orders');
+=======
+    const catRef = collection(db, 'artifacts', appId, 'shop', 'main', 'categories');
+    const prodRef = collection(db, 'artifacts', appId, 'shop', 'main', 'products');
+    const ordRef = collection(db, 'artifacts', appId, 'shop', 'main', 'orders');
+>>>>>>> 0707027 (Inksurge POS)
 
     // Subscribe to Categories
     const unsubCat = onSnapshot(query(catRef), (snapshot) => {
@@ -265,9 +369,15 @@ export default function InksurgePOS() {
       try {
         const userId = user.uid;
         if (editingOrderId) {
+<<<<<<< HEAD
           await updateDoc(doc(db, 'artifacts', appId, 'users', userId, 'orders', editingOrderId), orderData);
         } else {
           await addDoc(collection(db, 'artifacts', appId, 'users', userId, 'orders'), orderData);
+=======
+          await updateDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'orders', editingOrderId), orderData);
+        } else {
+          await addDoc(collection(db, 'artifacts', appId, 'shop', 'main', 'orders'), orderData);
+>>>>>>> 0707027 (Inksurge POS)
         }
       } catch (err) {
         console.error("Error storing order in database:", err);
@@ -307,7 +417,11 @@ export default function InksurgePOS() {
 
     if (db && user && user.uid !== 'demo_user') {
       try {
+<<<<<<< HEAD
         await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'orders', id));
+=======
+        await deleteDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'orders', id));
+>>>>>>> 0707027 (Inksurge POS)
       } catch (err) {
         console.error("Error deleting order:", err);
       }
@@ -348,6 +462,13 @@ export default function InksurgePOS() {
     );
   }
 
+<<<<<<< HEAD
+=======
+  if (auth && !user) {
+    return <LoginScreen onLogin={handleLogin} error={loginError} loading={loginLoading} />;
+  }
+
+>>>>>>> 0707027 (Inksurge POS)
   const SettingsView = () => {
     const [editProd, setEditProd] = useState(null);
     const [editCat, setEditCat] = useState(null);
@@ -369,9 +490,15 @@ export default function InksurgePOS() {
       if (db && user && user.uid !== 'demo_user') {
         try {
           if (editProd && editProd.id) {
+<<<<<<< HEAD
             await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'products', editProd.id), prodData);
           } else {
             await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'products'), prodData);
+=======
+            await updateDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'products', editProd.id), prodData);
+          } else {
+            await addDoc(collection(db, 'artifacts', appId, 'shop', 'main', 'products'), prodData);
+>>>>>>> 0707027 (Inksurge POS)
           }
         } catch (err) {
           console.error("Error saving service:", err);
@@ -399,9 +526,15 @@ export default function InksurgePOS() {
       if (db && user && user.uid !== 'demo_user') {
         try {
           if (editCat && editCat.id) {
+<<<<<<< HEAD
             await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'categories', editCat.id), catData);
           } else {
             await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'categories'), catData);
+=======
+            await updateDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'categories', editCat.id), catData);
+          } else {
+            await addDoc(collection(db, 'artifacts', appId, 'shop', 'main', 'categories'), catData);
+>>>>>>> 0707027 (Inksurge POS)
           }
         } catch (err) {
           console.error("Error saving category:", err);
@@ -420,7 +553,11 @@ export default function InksurgePOS() {
     const handleDeleteProduct = async (id) => {
       if (db && user && user.uid !== 'demo_user') {
         try {
+<<<<<<< HEAD
           await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'products', id));
+=======
+          await deleteDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'products', id));
+>>>>>>> 0707027 (Inksurge POS)
         } catch (err) {
           console.error("Error deleting product:", err);
         }
@@ -445,7 +582,11 @@ export default function InksurgePOS() {
 
       if (db && user && user.uid !== 'demo_user') {
         reordered.forEach(p => {
+<<<<<<< HEAD
           updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'products', p.id), { order: p.order });
+=======
+          updateDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'products', p.id), { order: p.order });
+>>>>>>> 0707027 (Inksurge POS)
         });
       }
     };
@@ -1341,6 +1482,19 @@ export default function InksurgePOS() {
           </button>
         </nav>
 
+<<<<<<< HEAD
+=======
+        {/* Signed-in staff + logout */}
+        {auth && user && user.email && (
+          <div className="px-6 pt-4 flex items-center justify-between text-xs text-slate-400 border-t border-slate-800">
+            <span className="truncate flex items-center"><User size={12} className="mr-1.5 shrink-0" />{user.email}</span>
+            <button onClick={handleLogout} className="ml-2 shrink-0 font-bold text-slate-400 hover:text-white transition-colors">
+              Log out
+            </button>
+          </div>
+        )}
+
+>>>>>>> 0707027 (Inksurge POS)
         {/* Footer Slogan */}
         <div className="p-6 border-t border-slate-800 bg-slate-900/50">
            <div className="text-slate-400 mb-3 opacity-70">
