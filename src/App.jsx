@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Printer, Home, FileText, BarChart2, Settings, Search, Plus, Minus, 
   Trash2, Edit, CheckCircle, X, Image as ImageIcon, Copy, Camera, FilePlus, 
-  Layers, AlignJustify, Calendar, RefreshCw, ArrowUp, ArrowDown, User, DollarSign, Download
+  Layers, AlignJustify, Calendar, RefreshCw, ArrowUp, ArrowDown, User, DollarSign, Download, Upload
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot, query, addDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, onSnapshot, query, addDoc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import Papa from 'papaparse';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -68,11 +69,11 @@ function LoginScreen({ onLogin, error, loading }) {
             <Printer size={28} className="text-white" />
           </div>
           <h1 className="text-xl font-black tracking-tight">Inksurge Prints</h1>
-          <p className="text-xs text-slate-400 mt-1 uppercase tracking-wider font-semibold">Staff Sign In</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-wider font-semibold">Staff Sign In</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-400 mb-1.5">Email</label>
+            <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 mb-1.5">Email</label>
             <input
               type="email"
               required
@@ -83,7 +84,7 @@ function LoginScreen({ onLogin, error, loading }) {
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-slate-400 mb-1.5">Password</label>
+            <label className="block text-xs font-bold text-slate-400 dark:text-slate-500 mb-1.5">Password</label>
             <input
               type="password"
               required
@@ -119,6 +120,28 @@ export default function InksurgePOS() {
   const [activeView, setActiveView] = useState('pos'); // pos, orders, reports, settings
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile/tablet nav drawer
   const [cartOpen, setCartOpen] = useState(false); // mobile/tablet order bottom-sheet
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inksurge_dark_mode');
+      if (saved !== null) return saved === 'true';
+    } catch (err) { /* localStorage unavailable - fall through */ }
+    return typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false;
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (darkMode) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    try {
+      localStorage.setItem('inksurge_dark_mode', darkMode.toString());
+    } catch (err) { /* localStorage unavailable - preference just won't persist */ }
+  }, [darkMode]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState(null);
   
@@ -414,7 +437,7 @@ export default function InksurgePOS() {
       <div className="flex flex-col h-screen items-center justify-center bg-slate-900 text-white">
         <Printer size={48} className="animate-bounce text-blue-400 mb-4" />
         <h2 className="text-xl font-bold">Loading Inksurge POS...</h2>
-        <p className="text-slate-400 text-sm mt-1">Preparing your printing catalog</p>
+        <p className="text-slate-400 dark:text-slate-500 text-sm mt-1">Preparing your printing catalog</p>
       </div>
     );
   }
@@ -526,20 +549,20 @@ export default function InksurgePOS() {
     };
 
     return (
-      <div className="p-8 h-full overflow-y-auto bg-slate-50">
+      <div className="p-8 h-full overflow-y-auto bg-slate-50 dark:bg-slate-900">
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-6">
             <div>
-              <h2 className="text-2xl font-black text-slate-800">Catalog & Service Settings</h2>
-              <p className="text-slate-500 text-sm mt-1">Manage printing services, prices, images, and category sorting</p>
+              <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">Catalog & Service Settings</h2>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Manage printing services, prices, images, and category sorting</p>
             </div>
             
             {/* Sub-tab Navigation */}
-            <div className="flex bg-slate-200 p-1 rounded-xl">
+            <div className="flex bg-slate-200 dark:bg-slate-700 p-1 rounded-xl">
               <button 
                 onClick={() => setActiveSettingsTab('services')}
                 className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${
-                  activeSettingsTab === 'services' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  activeSettingsTab === 'services' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:text-white'
                 }`}
               >
                 Services Catalog ({products.length})
@@ -547,10 +570,18 @@ export default function InksurgePOS() {
               <button 
                 onClick={() => setActiveSettingsTab('categories')}
                 className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${
-                  activeSettingsTab === 'categories' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  activeSettingsTab === 'categories' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:text-white'
                 }`}
               >
                 Categories ({categories.length})
+              </button>
+              <button 
+                onClick={() => setActiveSettingsTab('appearance')}
+                className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${
+                  activeSettingsTab === 'appearance' ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:text-white'
+                }`}
+              >
+                Appearance
               </button>
             </div>
           </div>
@@ -558,34 +589,34 @@ export default function InksurgePOS() {
           {activeSettingsTab === 'services' ? (
             <>
               {/* Product Add / Edit Form */}
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
-                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 mb-8">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center">
                   <span className="w-2 h-2 rounded-full bg-blue-600 mr-2"></span>
                   {editProd ? 'Edit Service' : 'Add New Printing Service'}
                 </h3>
                 <form onSubmit={handleSaveProduct} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Service Title (use \n for newline)</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Service Title (use \n for newline)</label>
                     <input 
                       name="name" 
                       defaultValue={editProd?.name} 
                       required 
                       placeholder="e.g. Black & White\n(Text Only)"
-                      className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
+                      className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Category</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Category</label>
                     <select 
                       name="categoryId" 
                       defaultValue={editProd?.categoryId || categories[0]?.id} 
-                      className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                      className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                     >
                       {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Price (₱)</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Price (₱)</label>
                     <input 
                       name="price" 
                       type="number" 
@@ -593,26 +624,26 @@ export default function InksurgePOS() {
                       defaultValue={editProd?.price} 
                       required 
                       placeholder="0.00"
-                      className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
+                      className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Billing Unit (e.g., page, pc, set)</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Billing Unit (e.g., page, pc, set)</label>
                     <input 
                       name="unit" 
                       defaultValue={editProd?.unit || 'page'} 
                       required 
                       placeholder="page"
-                      className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
+                      className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Image URL (Optional)</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Image URL (Optional)</label>
                     <input 
                       name="imageUrl" 
                       defaultValue={editProd?.imageUrl} 
                       placeholder="https://images.unsplash.com/photo-..."
-                      className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
+                      className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
                     />
                   </div>
                   <div className="md:col-span-2 flex justify-end space-x-3 mt-2">
@@ -620,7 +651,7 @@ export default function InksurgePOS() {
                       <button 
                         type="button" 
                         onClick={() => setEditProd(null)} 
-                        className="px-5 py-2.5 border border-slate-300 rounded-xl text-slate-600 hover:bg-slate-100 font-bold text-sm transition-colors"
+                        className="px-5 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-950 font-bold text-sm transition-colors"
                       >
                         Cancel
                       </button>
@@ -636,14 +667,14 @@ export default function InksurgePOS() {
               </div>
 
               {/* Products Table */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-                  <h3 className="font-bold text-slate-800">Current Services List</h3>
-                  <span className="text-xs font-semibold text-slate-500">Use ▲ ▼ to reorder items</span>
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+                  <h3 className="font-bold text-slate-800 dark:text-slate-100">Current Services List</h3>
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Use ▲ ▼ to reorder items</span>
                 </div>
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b text-xs uppercase font-bold text-slate-400 bg-slate-50/50">
+                    <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-500 bg-slate-50/50">
                       <th className="p-4 w-12 text-center">Sort</th>
                       <th className="p-4">Service Name</th>
                       <th className="p-4">Category</th>
@@ -659,26 +690,26 @@ export default function InksurgePOS() {
                             <button 
                               onClick={() => handleMoveProduct(idx, -1)} 
                               disabled={idx === 0}
-                              className="p-1 hover:bg-slate-200 rounded disabled:opacity-30 text-slate-600"
+                              className="p-1 hover:bg-slate-200 dark:bg-slate-700 rounded disabled:opacity-30 text-slate-600 dark:text-slate-300"
                             >
                               <ArrowUp size={14}/>
                             </button>
                             <button 
                               onClick={() => handleMoveProduct(idx, 1)} 
                               disabled={idx === products.length - 1}
-                              className="p-1 hover:bg-slate-200 rounded disabled:opacity-30 text-slate-600"
+                              className="p-1 hover:bg-slate-200 dark:bg-slate-700 rounded disabled:opacity-30 text-slate-600 dark:text-slate-300"
                             >
                               <ArrowDown size={14}/>
                             </button>
                           </div>
                         </td>
-                        <td className="p-4 font-semibold text-slate-800 whitespace-pre-line leading-snug">{p.name}</td>
-                        <td className="p-4 text-slate-600">
-                          <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-md font-medium text-xs">
+                        <td className="p-4 font-semibold text-slate-800 dark:text-slate-100 whitespace-pre-line leading-snug">{p.name}</td>
+                        <td className="p-4 text-slate-600 dark:text-slate-300">
+                          <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-200 rounded-md font-medium text-xs">
                             {categories.find(c => c.id === p.categoryId)?.name || 'Unassigned'}
                           </span>
                         </td>
-                        <td className="p-4 font-bold text-blue-600">₱{Number(p.price).toFixed(2)} <span className="text-slate-400 font-normal text-xs">/ {p.unit}</span></td>
+                        <td className="p-4 font-bold text-blue-600">₱{Number(p.price).toFixed(2)} <span className="text-slate-400 dark:text-slate-500 font-normal text-xs">/ {p.unit}</span></td>
                         <td className="p-4 text-center">
                           <div className="flex justify-center space-x-2">
                             <button 
@@ -706,25 +737,25 @@ export default function InksurgePOS() {
           ) : (
             /* Category Management Tab */
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit">
-                <h3 className="text-lg font-bold text-slate-800 mb-4">{editCat ? 'Edit Category' : 'Add Category'}</h3>
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 h-fit">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">{editCat ? 'Edit Category' : 'Add Category'}</h3>
                 <form onSubmit={handleSaveCategory} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Category Name</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Category Name</label>
                     <input 
                       name="name" 
                       defaultValue={editCat?.name} 
                       required 
                       placeholder="e.g. Stickers & Labels"
-                      className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
+                      className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">Icon Style</label>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Icon Style</label>
                     <select 
                       name="icon" 
                       defaultValue={editCat?.icon || 'file'} 
-                      className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                      className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                     >
                       <option value="file">File / Document</option>
                       <option value="copy">Copy</option>
@@ -739,7 +770,7 @@ export default function InksurgePOS() {
                       <button 
                         type="button" 
                         onClick={() => setEditCat(null)} 
-                        className="px-4 py-2 border rounded-xl text-slate-600 text-sm font-bold"
+                        className="px-4 py-2 border rounded-xl text-slate-600 dark:text-slate-300 text-sm font-bold"
                       >
                         Cancel
                       </button>
@@ -754,11 +785,11 @@ export default function InksurgePOS() {
                 </form>
               </div>
 
-              <div className="md:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-4 border-b bg-slate-50 font-bold text-slate-800">Categories List</div>
+              <div className="md:col-span-2 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="p-4 border-b bg-slate-50 dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100">Categories List</div>
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b text-xs uppercase font-bold text-slate-400 bg-slate-50/50">
+                    <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-500 bg-slate-50/50">
                       <th className="p-4">Icon</th>
                       <th className="p-4">Category Name</th>
                       <th className="p-4 text-center">Actions</th>
@@ -766,9 +797,9 @@ export default function InksurgePOS() {
                   </thead>
                   <tbody>
                     {categories.map(c => (
-                      <tr key={c.id} className="border-b hover:bg-slate-50 transition-colors text-sm">
-                        <td className="p-4 text-slate-600">{getCategoryIcon(c.icon)}</td>
-                        <td className="p-4 font-bold text-slate-800">{c.name}</td>
+                      <tr key={c.id} className="border-b hover:bg-slate-50 dark:bg-slate-900 transition-colors text-sm">
+                        <td className="p-4 text-slate-600 dark:text-slate-300">{getCategoryIcon(c.icon)}</td>
+                        <td className="p-4 font-bold text-slate-800 dark:text-slate-100">{c.name}</td>
                         <td className="p-4 text-center">
                           <button 
                             onClick={() => setEditCat(c)} 
@@ -781,6 +812,23 @@ export default function InksurgePOS() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          )}
+
+          {activeSettingsTab === 'appearance' && (
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 max-w-xl">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1">Dark Mode</h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Switch the whole system to a darker color scheme. Your choice is remembered on this device.</p>
+              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{darkMode ? 'Dark mode is on' : 'Dark mode is off'}</span>
+                <button
+                  onClick={() => setDarkMode(d => !d)}
+                  aria-pressed={darkMode}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors shrink-0 ${darkMode ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white dark:bg-slate-800 shadow transition-transform ${darkMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
               </div>
             </div>
           )}
@@ -854,60 +902,197 @@ export default function InksurgePOS() {
       document.body.removeChild(link);
     };
 
+    const fileInputRef = useRef(null);
+    const [importing, setImporting] = useState(false);
+    const [importMessage, setImportMessage] = useState(null); // { type: 'success' | 'error', text }
+
+    const parseItemsText = (text) => {
+      if (!text || !String(text).trim()) {
+        return [{ id: 'imported', name: 'Imported Sale', price: 0, qty: 1, isLongSize: false }];
+      }
+      const parts = String(text).split(';').map(s => s.trim()).filter(Boolean);
+      const items = parts.map(part => {
+        const isLongSize = /\[Long Paper\]/i.test(part);
+        const clean = part.replace(/\[Long Paper\]/i, '').trim();
+        const qtyMatch = clean.match(/^(\d+)\s*x\s*(.+)$/i);
+        return qtyMatch
+          ? { id: 'imported', name: qtyMatch[2].trim(), price: 0, qty: parseInt(qtyMatch[1], 10) || 1, isLongSize }
+          : { id: 'imported', name: clean || 'Imported Item', price: 0, qty: 1, isLongSize };
+      });
+      return items.length ? items : [{ id: 'imported', name: 'Imported Sale', price: 0, qty: 1, isLongSize: false }];
+    };
+
+    const parseAmount = (val) => {
+      if (val === undefined || val === null || val === '') return 0;
+      const n = parseFloat(String(val).replace(/[^0-9.\-]/g, ''));
+      return isNaN(n) ? 0 : n;
+    };
+
+    const parseDateValue = (val) => {
+      if (!val) return Date.now();
+      const d = new Date(val);
+      return isNaN(d.getTime()) ? Date.now() : d.getTime();
+    };
+
+    // Case/spacing-insensitive column lookup so slightly different headers still work
+    const findCol = (row, candidates) => {
+      const keys = Object.keys(row);
+      for (const cand of candidates) {
+        const key = keys.find(k => k.trim().toLowerCase() === cand);
+        if (key !== undefined && row[key] !== undefined) return row[key];
+      }
+      return undefined;
+    };
+
+    const handleImportCSV = (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      setImporting(true);
+      setImportMessage(null);
+
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          try {
+            const rows = results.data || [];
+            if (rows.length === 0) {
+              setImportMessage({ type: 'error', text: 'No rows found in that CSV.' });
+              setImporting(false);
+              return;
+            }
+
+            const newOrders = rows.map(row => {
+              const dateVal = findCol(row, ['date', 'order date']);
+              const timeVal = findCol(row, ['time']);
+              const combinedDate = timeVal ? `${dateVal} ${timeVal}` : dateVal;
+              const customer = findCol(row, ['customer name', 'customer']);
+              const itemsText = findCol(row, ['items purchased', 'items']);
+
+              const subtotal = parseAmount(findCol(row, ['subtotal (php)', 'subtotal']));
+              const additionalCharge = parseAmount(findCol(row, ['additional charge (php)', 'additional charge']));
+              const total = parseAmount(findCol(row, ['total amount (php)', 'total']));
+
+              const finalTotal = total || (subtotal + additionalCharge);
+              const finalSubtotal = subtotal || Math.max(finalTotal - additionalCharge, 0);
+
+              return {
+                items: parseItemsText(itemsText),
+                subtotal: finalSubtotal,
+                additionalCharge: additionalCharge || 0,
+                total: finalTotal,
+                customerName: (customer && String(customer).trim()) || 'Walk-in Customer',
+                timestamp: parseDateValue(combinedDate),
+                importedAt: Date.now(),
+              };
+            }).filter(o => o.total > 0 || o.subtotal > 0);
+
+            if (newOrders.length === 0) {
+              setImportMessage({ type: 'error', text: "Couldn't find any valid sales rows. Check that your columns include at least a Date and a Total." });
+              setImporting(false);
+              if (fileInputRef.current) fileInputRef.current.value = '';
+              return;
+            }
+
+            if (db && user && user.uid !== 'demo_user') {
+              const batch = writeBatch(db);
+              const ordersCol = collection(db, 'artifacts', appId, 'shop', 'main', 'orders');
+              newOrders.forEach(o => {
+                const ref = doc(ordersCol);
+                batch.set(ref, o);
+              });
+              await batch.commit();
+            } else {
+              setOrders(prev => [
+                ...prev,
+                ...newOrders.map(o => ({ ...o, id: 'imported_' + Date.now() + '_' + Math.random().toString(36).slice(2) }))
+              ]);
+            }
+
+            setImportMessage({ type: 'success', text: `Imported ${newOrders.length} sale${newOrders.length === 1 ? '' : 's'} — metrics below now include ${newOrders.length === 1 ? 'it' : 'them'}.` });
+          } catch (err) {
+            console.error('CSV import error:', err);
+            setImportMessage({ type: 'error', text: 'Something went wrong reading that file. Please check its format and try again.' });
+          } finally {
+            setImporting(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          }
+        },
+        error: (err) => {
+          console.error('CSV parse error:', err);
+          setImportMessage({ type: 'error', text: 'Could not parse that file as CSV.' });
+          setImporting(false);
+        }
+      });
+    };
+
     return (
-      <div className="p-8 h-full overflow-y-auto bg-slate-50">
+      <div className="p-8 h-full overflow-y-auto bg-slate-50 dark:bg-slate-900">
         <div className="max-w-6xl mx-auto">
           <div className="mb-6">
-            <h2 className="text-2xl font-black text-slate-800">Sales Reports & Analytics</h2>
-            <p className="text-slate-500 text-sm mt-1">Overview of daily, monthly, and custom date range revenue</p>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">Sales Reports & Analytics</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Overview of daily, monthly, and custom date range revenue</p>
           </div>
+
+          {importMessage && (
+            <div className={`mb-6 px-4 py-3 rounded-xl text-sm font-semibold flex items-start justify-between gap-3 ${
+              importMessage.type === 'success'
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                : 'bg-red-50 text-red-700 border border-red-200'
+            }`}>
+              <span>{importMessage.text}</span>
+              <button onClick={() => setImportMessage(null)} className="shrink-0 opacity-60 hover:opacity-100">
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
           {/* Top Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-blue-500 border-y border-r border-slate-200">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Sales Today</p>
-              <p className="text-3xl font-black text-slate-800 mt-2">₱{salesToday.toFixed(2)}</p>
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border-l-4 border-blue-500 border-y border-r border-slate-200 dark:border-slate-700">
+              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Sales Today</p>
+              <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-2">₱{salesToday.toFixed(2)}</p>
             </div>
-            <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-emerald-500 border-y border-r border-slate-200">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Yesterday's Sales</p>
-              <p className="text-3xl font-black text-slate-800 mt-2">₱{salesYesterday.toFixed(2)}</p>
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border-l-4 border-emerald-500 border-y border-r border-slate-200 dark:border-slate-700">
+              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Yesterday's Sales</p>
+              <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-2">₱{salesYesterday.toFixed(2)}</p>
             </div>
-            <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-purple-500 border-y border-r border-slate-200">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">This Month's Sales</p>
-              <p className="text-3xl font-black text-slate-800 mt-2">₱{salesMonth.toFixed(2)}</p>
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border-l-4 border-purple-500 border-y border-r border-slate-200 dark:border-slate-700">
+              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">This Month's Sales</p>
+              <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-2">₱{salesMonth.toFixed(2)}</p>
             </div>
-            <div className="bg-white p-6 rounded-2xl shadow-sm border-l-4 border-amber-500 border-y border-r border-slate-200">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Year-to-Date Sales</p>
-              <p className="text-3xl font-black text-slate-800 mt-2">₱{salesYear.toFixed(2)}</p>
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border-l-4 border-amber-500 border-y border-r border-slate-200 dark:border-slate-700">
+              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Year-to-Date Sales</p>
+              <p className="text-3xl font-black text-slate-800 dark:text-slate-100 mt-2">₱{salesYear.toFixed(2)}</p>
             </div>
           </div>
 
           {/* Date Range Selector */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8">
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 mb-8">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
               <div>
-                <h3 className="text-base font-bold text-slate-800 flex items-center mb-3">
+                <h3 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center mb-3">
                   <Calendar size={18} className="mr-2 text-blue-600" />
                   Select Custom Date Range
                 </h3>
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="flex flex-col">
-                    <label className="text-xs font-semibold text-slate-500 mb-1">Start Date</label>
+                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">Start Date</label>
                     <input 
                       type="date" 
                       value={startDate} 
                       onChange={e => setStartDate(e.target.value)} 
-                      className="p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50" 
+                      className="p-2.5 border border-slate-300 dark:border-slate-600 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50" 
                     />
                   </div>
-                  <span className="text-slate-400 font-bold self-end pb-3">to</span>
+                  <span className="text-slate-400 dark:text-slate-500 font-bold self-end pb-3">to</span>
                   <div className="flex flex-col">
-                    <label className="text-xs font-semibold text-slate-500 mb-1">End Date</label>
+                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">End Date</label>
                     <input 
                       type="date" 
                       value={endDate} 
                       onChange={e => setEndDate(e.target.value)} 
-                      className="p-2.5 border border-slate-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50" 
+                      className="p-2.5 border border-slate-300 dark:border-slate-600 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50" 
                     />
                   </div>
                   {(startDate || endDate) && (
@@ -932,31 +1117,48 @@ export default function InksurgePOS() {
           </div>
 
           {/* Detailed History Table with Download CSV Button */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-5 border-b bg-slate-50 flex flex-wrap justify-between items-center gap-2">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="p-5 border-b bg-slate-50 dark:bg-slate-900 flex flex-wrap justify-between items-center gap-2">
               <div>
-                <h3 className="font-bold text-slate-800">Sales Transactions History</h3>
-                <span className="text-xs text-slate-500 font-medium">{filteredOrders.length} records</span>
+                <h3 className="font-bold text-slate-800 dark:text-slate-100">Sales Transactions History</h3>
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{filteredOrders.length} records</span>
               </div>
-              <button 
-                onClick={handleDownloadCSV}
-                disabled={filteredOrders.length === 0}
-                className="flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer disabled:cursor-not-allowed"
-              >
-                <Download size={14} className="mr-1.5" /> Download CSV
-              </button>
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  ref={fileInputRef}
+                  onChange={handleImportCSV}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                  disabled={importing}
+                  title="Columns: Date, Customer Name, Subtotal, Additional Charge, Total"
+                  className="flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:bg-slate-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-blue-200 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <Upload size={14} className="mr-1.5" /> {importing ? 'Importing…' : 'Import CSV'}
+                </button>
+                <button 
+                  onClick={handleDownloadCSV}
+                  disabled={filteredOrders.length === 0}
+                  className="flex items-center px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 dark:bg-slate-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-emerald-200 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <Download size={14} className="mr-1.5" /> Download CSV
+                </button>
+              </div>
             </div>
 
             {filteredOrders.length === 0 ? (
-              <div className="p-12 text-center text-slate-400">
+              <div className="p-12 text-center text-slate-400 dark:text-slate-500">
                 <BarChart2 size={40} className="mx-auto mb-3 opacity-30"/>
-                <p className="font-semibold text-slate-600">No transactions match the selected date range.</p>
+                <p className="font-semibold text-slate-600 dark:text-slate-300">No transactions match the selected date range.</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[700px]">
                   <thead>
-                    <tr className="border-b text-xs uppercase font-bold text-slate-400 bg-slate-50/50">
+                    <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-500 bg-slate-50/50">
                       <th className="p-4">Date & Time</th>
                       <th className="p-4">Order Ref</th>
                       <th className="p-4">Customer Name</th>
@@ -967,20 +1169,20 @@ export default function InksurgePOS() {
                   <tbody>
                     {filteredOrders.map(o => (
                       <tr key={o.id} className="border-b hover:bg-slate-50/80 transition-colors text-sm">
-                        <td className="p-4 text-slate-600 font-medium">
+                        <td className="p-4 text-slate-600 dark:text-slate-300 font-medium">
                           {new Date(o.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                          <span className="text-xs text-slate-400 block">{new Date(o.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span className="text-xs text-slate-400 dark:text-slate-500 block">{new Date(o.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         </td>
-                        <td className="p-4 text-xs font-mono text-slate-400">{o.id.slice(-6).toUpperCase()}</td>
-                        <td className="p-4 font-bold text-slate-800">{o.customerName || 'N/A'}</td>
-                      <td className="p-4 text-slate-600">
+                        <td className="p-4 text-xs font-mono text-slate-400 dark:text-slate-500">{o.id.slice(-6).toUpperCase()}</td>
+                        <td className="p-4 font-bold text-slate-800 dark:text-slate-100">{o.customerName || 'N/A'}</td>
+                      <td className="p-4 text-slate-600 dark:text-slate-300">
                         {o.items?.map((item, idx) => {
                           const unitP = Number(item.price) + ((item.categoryId === 'cat_doc' || item.categoryId === 'cat_copy') && item.isLongSize ? 2.0 : 0);
                           return (
                             <div key={idx} className="truncate text-xs py-0.5">
                               • {item.qty}x {item.name.replace('\n', ' ')}
                               {item.isLongSize && <span className="ml-1 text-blue-600 font-semibold">[Long Paper]</span>}
-                              <span className="text-slate-400 font-normal ml-1">(₱{unitP.toFixed(2)})</span>
+                              <span className="text-slate-400 dark:text-slate-500 font-normal ml-1">(₱{unitP.toFixed(2)})</span>
                             </div>
                           );
                         })}
@@ -988,7 +1190,7 @@ export default function InksurgePOS() {
                           <div className="text-xs font-semibold text-blue-600">+ Extra Charge: ₱{o.additionalCharge}</div>
                         )}
                       </td>
-                      <td className="p-4 text-right font-black text-slate-900 text-base">₱{(o.total || 0).toFixed(2)}</td>
+                      <td className="p-4 text-right font-black text-slate-900 dark:text-white text-base">₱{(o.total || 0).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1002,30 +1204,30 @@ export default function InksurgePOS() {
   };
 
   const OrdersView = () => (
-    <div className="p-8 h-full overflow-y-auto bg-slate-50">
+    <div className="p-8 h-full overflow-y-auto bg-slate-50 dark:bg-slate-900">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-2xl font-black text-slate-800">Completed Orders</h2>
-            <p className="text-slate-500 text-sm mt-1">View, edit, or remove past sales records</p>
+            <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">Completed Orders</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">View, edit, or remove past sales records</p>
           </div>
-          <span className="px-3 py-1 bg-slate-200 text-slate-700 font-bold rounded-full text-xs">
+          <span className="px-3 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-full text-xs">
             {orders.length} Total Sales
           </span>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
           {orders.length === 0 ? (
             <div className="p-16 text-center">
-              <CheckCircle size={48} className="mx-auto text-slate-300 mb-4" />
-              <p className="text-slate-600 font-bold text-lg">No orders recorded yet.</p>
-              <p className="text-slate-400 text-sm mt-1">Complete sales from the POS terminal to see transactions here.</p>
+              <CheckCircle size={48} className="mx-auto text-slate-300 dark:text-slate-600 mb-4" />
+              <p className="text-slate-600 dark:text-slate-300 font-bold text-lg">No orders recorded yet.</p>
+              <p className="text-slate-400 dark:text-slate-500 text-sm mt-1">Complete sales from the POS terminal to see transactions here.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[750px]">
                 <thead>
-                  <tr className="border-b text-xs uppercase font-bold text-slate-400 bg-slate-50">
+                  <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-900">
                     <th className="p-4">Date & Time</th>
                     <th className="p-4">Customer Name</th>
                     <th className="p-4 w-1/3">Order Breakdown</th>
@@ -1036,24 +1238,24 @@ export default function InksurgePOS() {
                 <tbody>
                   {orders.map(o => (
                     <tr key={o.id} className="border-b hover:bg-slate-50/80 transition-colors text-sm">
-                      <td className="p-4 text-slate-600 font-medium">
+                      <td className="p-4 text-slate-600 dark:text-slate-300 font-medium">
                         {new Date(o.timestamp).toLocaleDateString()}
-                        <span className="text-xs text-slate-400 block">{new Date(o.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="text-xs text-slate-400 dark:text-slate-500 block">{new Date(o.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </td>
-                      <td className="p-4 font-bold text-slate-800">
+                      <td className="p-4 font-bold text-slate-800 dark:text-slate-100">
                         <span className="flex items-center">
-                          <User size={14} className="mr-1.5 text-slate-400" />
+                          <User size={14} className="mr-1.5 text-slate-400 dark:text-slate-500" />
                           {o.customerName || 'N/A'}
                         </span>
                       </td>
-                      <td className="p-4 text-slate-600">
+                      <td className="p-4 text-slate-600 dark:text-slate-300">
                         <div className="space-y-1">
                           {o.items?.map((item, idx) => {
                             const unitP = Number(item.price) + ((item.categoryId === 'cat_doc' || item.categoryId === 'cat_copy') && item.isLongSize ? 2.0 : 0);
                             return (
                               <div key={idx} className="text-xs flex justify-between pr-4">
                                 <span>• {item.qty}x {item.name.replace('\n', ' ')} {item.isLongSize && <span className="text-blue-600 font-semibold">[Long]</span>}</span>
-                                <span className="text-slate-400">(₱{unitP.toFixed(2)})</span>
+                                <span className="text-slate-400 dark:text-slate-500">(₱{unitP.toFixed(2)})</span>
                               </div>
                             );
                           })}
@@ -1062,7 +1264,7 @@ export default function InksurgePOS() {
                           )}
                         </div>
                       </td>
-                      <td className="p-4 text-right font-black text-slate-900 text-lg">₱{(o.total || 0).toFixed(2)}</td>
+                      <td className="p-4 text-right font-black text-slate-900 dark:text-white text-lg">₱{(o.total || 0).toFixed(2)}</td>
                       <td className="p-4">
                         <div className="flex justify-center space-x-2">
                           <button 
@@ -1091,25 +1293,25 @@ export default function InksurgePOS() {
   );
 
   const renderPOSView = () => (
-    <div className="flex h-full bg-slate-100 overflow-hidden">
+    <div className="flex h-full bg-slate-100 dark:bg-slate-950 overflow-hidden">
       {/* Main Catalog Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Search Bar */}
-        <div className="p-4 bg-white border-b border-slate-200 flex items-center shadow-sm z-10">
+        <div className="p-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center shadow-sm z-10">
           <div className="relative w-full max-w-2xl">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={18} />
             <input 
               type="text" 
               placeholder="Search product or service... (e.g. A4, photo, laminate)"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-100/80 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none text-sm transition-all placeholder-slate-400"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-100/80 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:bg-slate-800 outline-none text-sm transition-all placeholder-slate-400"
             />
           </div>
         </div>
 
         {/* Categories Ribbon */}
-        <div className="flex p-4 gap-3 overflow-x-auto bg-slate-50 border-b border-slate-200 scrollbar-hide">
+        <div className="flex p-4 gap-3 overflow-x-auto bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 scrollbar-hide">
           {categories.map(cat => (
             <button 
               key={cat.id}
@@ -1117,10 +1319,10 @@ export default function InksurgePOS() {
               className={`flex flex-col items-center justify-center min-w-[105px] py-3.5 px-3 rounded-2xl font-bold transition-all duration-200 ${
                 activeCategory === cat.id && !searchQuery
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-200 border-transparent scale-105' 
-                  : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 hover:text-slate-900'
+                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 hover:text-slate-900 dark:text-white'
               }`}
             >
-              <div className={activeCategory === cat.id && !searchQuery ? 'text-white' : 'text-slate-500'}>
+              <div className={activeCategory === cat.id && !searchQuery ? 'text-white' : 'text-slate-500 dark:text-slate-400'}>
                 {getCategoryIcon(cat.icon)}
               </div>
               <span className="text-xs mt-1">{cat.name}</span>
@@ -1131,10 +1333,10 @@ export default function InksurgePOS() {
         {/* Product Grid */}
         <div className="flex-1 overflow-y-auto p-6 scroll-smooth">
           {filteredProducts.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400 py-16">
-              <Printer size={48} className="text-slate-300 mb-3" />
-              <p className="font-bold text-slate-600 text-lg">No services found</p>
-              <p className="text-xs text-slate-400 mt-1">Try selecting another category or clearing your search filter</p>
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 py-16">
+              <Printer size={48} className="text-slate-300 dark:text-slate-600 mb-3" />
+              <p className="font-bold text-slate-600 dark:text-slate-300 text-lg">No services found</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Try selecting another category or clearing your search filter</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
@@ -1142,34 +1344,34 @@ export default function InksurgePOS() {
                 <div 
                   key={product.id}
                   onClick={() => addToCart(product)}
-                  className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-400 transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden"
+                  className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-blue-400 transition-all cursor-pointer flex flex-col justify-between group relative overflow-hidden"
                 >
                   <div>
                     {/* Service Preview Icon or Custom Image - 1:1 Square Container */}
-                    <div className="w-full aspect-square bg-slate-50 rounded-xl mb-3 flex items-center justify-center border border-slate-100 overflow-hidden group-hover:bg-blue-50/50 transition-colors">
+                    <div className="w-full aspect-square bg-slate-50 dark:bg-slate-900 rounded-xl mb-3 flex items-center justify-center border border-slate-100 dark:border-slate-800 overflow-hidden group-hover:bg-blue-50/50 transition-colors">
                       {product.imageUrl ? (
                         <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="text-slate-400 group-hover:text-blue-600 transition-colors flex flex-col items-center">
+                        <div className="text-slate-400 dark:text-slate-500 group-hover:text-blue-600 transition-colors flex flex-col items-center">
                           {getCategoryIcon(categories.find(c => c.id === product.categoryId)?.icon)}
                         </div>
                       )}
                     </div>
 
                     {/* Service Title */}
-                    <h3 className="font-bold text-slate-800 text-sm leading-snug whitespace-pre-line group-hover:text-blue-600 transition-colors">
+                    <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-snug whitespace-pre-line group-hover:text-blue-600 transition-colors">
                       {product.name}
                     </h3>
                   </div>
 
                   {/* Price & Quick Add Button */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                     <div>
-                      <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">Price</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 block font-semibold uppercase tracking-wider">Price</span>
                       <span className="text-base font-black text-blue-600">
                         ₱{Number(product.price).toFixed(2)}
                       </span>
-                      <span className="text-[10px] text-slate-400 font-normal ml-0.5">/{product.unit}</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal ml-0.5">/{product.unit}</span>
                     </div>
                     <button 
                       onClick={(e) => {
@@ -1215,17 +1417,17 @@ export default function InksurgePOS() {
 
       {/* Current Order Cart Sidebar */}
       <div
-        className={`fixed inset-x-0 bottom-0 z-40 max-h-[88vh] bg-white shadow-2xl flex flex-col rounded-t-3xl transform transition-transform duration-200 ease-in-out
-          lg:static lg:z-20 lg:max-h-none lg:rounded-none lg:translate-y-0 lg:w-[380px] xl:w-[440px] lg:border-l lg:border-slate-200
+        className={`fixed inset-x-0 bottom-0 z-40 max-h-[88vh] bg-white dark:bg-slate-800 shadow-2xl flex flex-col rounded-t-3xl transform transition-transform duration-200 ease-in-out
+          lg:static lg:z-20 lg:max-h-none lg:rounded-none lg:translate-y-0 lg:w-[380px] xl:w-[440px] lg:border-l lg:border-slate-200 dark:border-slate-700
           ${cartOpen ? 'translate-y-0' : 'translate-y-full'}`}
       >
         {/* Drag handle (mobile/tablet only) */}
         <div className="lg:hidden flex justify-center pt-2.5 pb-1">
-          <div className="w-10 h-1.5 bg-slate-300 rounded-full" />
+          <div className="w-10 h-1.5 bg-slate-300 dark:bg-slate-600 rounded-full" />
         </div>
 
-        <div className="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-          <h2 className="text-lg font-black text-slate-800 flex items-center">
+        <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+          <h2 className="text-lg font-black text-slate-800 dark:text-slate-100 flex items-center">
             {editingOrderId ? (
               <><Edit size={18} className="mr-2 text-blue-600"/> Editing Order</>
             ) : (
@@ -1243,7 +1445,7 @@ export default function InksurgePOS() {
             )}
             <button
               onClick={() => setCartOpen(false)}
-              className="lg:hidden p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-lg transition-colors"
+              className="lg:hidden p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:bg-slate-700 rounded-lg transition-colors"
               title="Close"
             >
               <X size={18} />
@@ -1254,17 +1456,17 @@ export default function InksurgePOS() {
         {/* Cart Items List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {cart.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-slate-400">
-               <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-3">
-                 <Printer size={32} className="text-slate-300" />
+            <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
+               <div className="w-20 h-20 bg-slate-100 dark:bg-slate-950 rounded-full flex items-center justify-center mb-3">
+                 <Printer size={32} className="text-slate-300 dark:text-slate-600" />
                </div>
-               <p className="font-bold text-slate-600">Cart is empty</p>
-               <p className="text-xs text-slate-400 mt-1">Select items from catalog to begin</p>
+               <p className="font-bold text-slate-600 dark:text-slate-300">Cart is empty</p>
+               <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Select items from catalog to begin</p>
             </div>
           ) : (
             <>
               {/* Table Header */}
-              <div className="flex items-center text-[11px] font-bold text-slate-400 uppercase tracking-wider pb-2 border-b border-slate-100 px-1">
+              <div className="flex items-center text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider pb-2 border-b border-slate-100 dark:border-slate-800 px-1">
                 <div className="flex-1">Item</div>
                 <div className="w-20 text-center">Qty</div>
                 <div className="w-14 text-right">Price</div>
@@ -1275,29 +1477,29 @@ export default function InksurgePOS() {
                 const itemUnitPrice = getItemUnitPrice(item);
                 const itemTotal = getItemTotal(item);
                 return (
-                  <div key={item.productId} className="py-2 border-b border-slate-100 hover:bg-slate-50/80 rounded-xl px-1 transition-colors">
+                  <div key={item.productId} className="py-2 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50/80 rounded-xl px-1 transition-colors">
                     <div className="flex items-center gap-2.5 text-xs">
                       {/* Compact Item Square Image Thumbnail */}
-                      <div className="w-9 h-9 aspect-square rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden flex-shrink-0 p-0.5">
+                      <div className="w-9 h-9 aspect-square rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0 p-0.5">
                         {item.imageUrl ? (
                           <img src={item.imageUrl} alt={item.name} className="w-full h-full object-contain" />
                         ) : (
-                          <ImageIcon className="text-slate-300" size={16} />
+                          <ImageIcon className="text-slate-300 dark:text-slate-600" size={16} />
                         )}
                       </div>
 
                       {/* Item Details */}
                       <div className="flex-1 min-w-0 pr-1">
-                        <p className="font-bold text-slate-800 whitespace-pre-line leading-snug text-xs">{item.name}</p>
+                        <p className="font-bold text-slate-800 dark:text-slate-100 whitespace-pre-line leading-snug text-xs">{item.name}</p>
                         
                         {/* Long Size Paper Option Checkbox */}
                         {(item.categoryId === 'cat_doc' || item.categoryId === 'cat_copy') && (
-                          <label className="mt-1 flex items-center space-x-1 cursor-pointer text-slate-700 font-semibold text-[11px]">
+                          <label className="mt-1 flex items-center space-x-1 cursor-pointer text-slate-700 dark:text-slate-200 font-semibold text-[11px]">
                             <input 
                               type="checkbox"
                               checked={!!item.isLongSize}
                               onChange={() => toggleCartItemLongSize(item.productId)}
-                              className="w-3.5 h-3.5 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                              className="w-3.5 h-3.5 text-blue-600 rounded border-slate-300 dark:border-slate-600 focus:ring-blue-500 cursor-pointer"
                             />
                             <span>Long size <span className="text-blue-600 font-medium">(+₱2.00)</span></span>
                           </label>
@@ -1305,19 +1507,19 @@ export default function InksurgePOS() {
                       </div>
                       
                       {/* Quantity Selector */}
-                      <div className="w-20 flex items-center justify-between bg-white border border-slate-200 rounded-lg p-0.5 shadow-sm flex-shrink-0">
-                        <button onClick={() => updateCartQty(item.productId, -1)} className="p-1 text-slate-500 hover:bg-slate-100 rounded"><Minus size={12}/></button>
-                        <span className="font-bold text-slate-800 text-xs">{item.qty}</span>
-                        <button onClick={() => updateCartQty(item.productId, 1)} className="p-1 text-slate-500 hover:bg-slate-100 rounded"><Plus size={12}/></button>
+                      <div className="w-20 flex items-center justify-between bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 shadow-sm flex-shrink-0">
+                        <button onClick={() => updateCartQty(item.productId, -1)} className="p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-950 rounded"><Minus size={12}/></button>
+                        <span className="font-bold text-slate-800 dark:text-slate-100 text-xs">{item.qty}</span>
+                        <button onClick={() => updateCartQty(item.productId, 1)} className="p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-950 rounded"><Plus size={12}/></button>
                       </div>
                       
                       {/* Price per unit */}
-                      <div className="w-14 text-right text-slate-500 font-medium text-xs flex-shrink-0">₱{itemUnitPrice.toFixed(2)}</div>
+                      <div className="w-14 text-right text-slate-500 dark:text-slate-400 font-medium text-xs flex-shrink-0">₱{itemUnitPrice.toFixed(2)}</div>
                       
                       {/* Total Price & Delete Action */}
-                      <div className="w-16 flex items-center justify-end font-black text-slate-900 text-xs flex-shrink-0">
+                      <div className="w-16 flex items-center justify-end font-black text-slate-900 dark:text-white text-xs flex-shrink-0">
                         <span>₱{itemTotal.toFixed(2)}</span>
-                        <button onClick={() => removeFromCart(item.productId)} className="text-slate-300 hover:text-red-500 ml-1 p-0.5">
+                        <button onClick={() => removeFromCart(item.productId)} className="text-slate-300 dark:text-slate-600 hover:text-red-500 ml-1 p-0.5">
                           <X size={14}/>
                         </button>
                       </div>
@@ -1330,38 +1532,38 @@ export default function InksurgePOS() {
         </div>
 
         {/* Totals & Required Customer Form */}
-        <div className="p-5 bg-white border-t border-slate-200 shadow-lg space-y-3.5">
+        <div className="p-5 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shadow-lg space-y-3.5">
           {/* Subtotal */}
           <div className="flex justify-between items-center text-xs">
-            <span className="text-slate-500 font-bold">Subtotal</span>
-            <span className="text-sm font-bold text-slate-800">₱{cartSubtotal.toFixed(2)}</span>
+            <span className="text-slate-500 dark:text-slate-400 font-bold">Subtotal</span>
+            <span className="text-sm font-bold text-slate-800 dark:text-slate-100">₱{cartSubtotal.toFixed(2)}</span>
           </div>
 
           {/* Additional Charge */}
           <div className="flex justify-between items-center gap-2 text-xs">
-            <span className="text-slate-500 font-bold whitespace-nowrap">Additional Charge</span>
+            <span className="text-slate-500 dark:text-slate-400 font-bold whitespace-nowrap">Additional Charge</span>
             <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold">₱</span>
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 font-bold">₱</span>
               <input 
                 type="number" 
                 placeholder="0.00" 
                 value={additionalChargeInput}
                 onChange={handleAdditionalChargeChange}
-                className="w-24 p-1.5 pl-6 text-right border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
+                className="w-24 p-1.5 pl-6 text-right border border-slate-300 dark:border-slate-600 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-xs font-semibold"
               />
             </div>
           </div>
 
           {/* REQUIRED Customer Name Input */}
           <div className="pt-1">
-            <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1 flex items-center justify-between">
               <span>Customer Name <span className="text-red-500">*</span></span>
               {!customerName.trim() && cart.length > 0 && (
                 <span className="text-[10px] text-red-500 font-semibold">Required</span>
               )}
             </label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={14} />
               <input 
                 type="text" 
                 placeholder="Enter customer name..." 
@@ -1370,7 +1572,7 @@ export default function InksurgePOS() {
                 className={`w-full p-2 pl-8 text-xs border rounded-xl outline-none transition-all ${
                   !customerName.trim() && cart.length > 0 
                     ? 'border-red-300 bg-red-50/50 focus:ring-2 focus:ring-red-500' 
-                    : 'border-slate-300 focus:ring-2 focus:ring-blue-500'
+                    : 'border-slate-300 dark:border-slate-600 focus:ring-2 focus:ring-blue-500'
                 }`}
                 required
               />
@@ -1378,8 +1580,8 @@ export default function InksurgePOS() {
           </div>
 
           {/* Final Total */}
-          <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200">
-            <span className="text-xl font-black text-slate-900">Total</span>
+          <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
+            <span className="text-xl font-black text-slate-900 dark:text-white">Total</span>
             <span className="text-2xl font-black text-blue-600">₱{cartTotal.toFixed(2)}</span>
           </div>
 
@@ -1389,7 +1591,7 @@ export default function InksurgePOS() {
             disabled={cart.length === 0 || !customerName.trim()}
             className={`w-full py-3.5 rounded-xl flex items-center justify-center text-sm font-bold transition-all duration-200 shadow-md ${
               (cart.length === 0 || !customerName.trim()) 
-                ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' 
+                ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none' 
                 : editingOrderId 
                   ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200' 
                   : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 hover:-translate-y-0.5'
@@ -1407,7 +1609,7 @@ export default function InksurgePOS() {
   );
 
   return (
-    <div className="flex h-screen bg-slate-900 font-sans text-slate-800">
+    <div className="flex h-screen bg-slate-900 font-sans text-slate-800 dark:text-slate-100">
       {/* Backdrop for the nav drawer (mobile/tablet only) */}
       {sidebarOpen && (
         <div
@@ -1429,12 +1631,12 @@ export default function InksurgePOS() {
             </div>
             <div>
               <h1 className="text-lg font-black tracking-tight leading-none text-white">Inksurge Prints</h1>
-              <p className="text-[10px] text-slate-400 mt-1 font-semibold tracking-wider uppercase">Print • Copy • Scan</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-semibold tracking-wider uppercase">Print • Copy • Scan</p>
             </div>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="lg:hidden p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+            className="lg:hidden p-1.5 text-slate-400 dark:text-slate-500 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
             title="Close menu"
           >
             <X size={20} />
@@ -1445,7 +1647,7 @@ export default function InksurgePOS() {
           <button 
             onClick={() => { setActiveView('pos'); setSidebarOpen(false); }}
             className={`w-full flex items-center px-4 py-3 rounded-xl font-bold text-sm transition-all ${
-              activeView === 'pos' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              activeView === 'pos' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-800 hover:text-white'
             }`}
           >
             <Home className="mr-3" size={18} /> POS Terminal
@@ -1454,7 +1656,7 @@ export default function InksurgePOS() {
           <button 
             onClick={() => { setActiveView('orders'); setSidebarOpen(false); }}
             className={`w-full flex items-center px-4 py-3 rounded-xl font-bold text-sm transition-all ${
-              activeView === 'orders' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              activeView === 'orders' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-800 hover:text-white'
             }`}
           >
             <FileText className="mr-3" size={18} /> Orders
@@ -1463,7 +1665,7 @@ export default function InksurgePOS() {
           <button 
             onClick={() => { setActiveView('reports'); setSidebarOpen(false); }}
             className={`w-full flex items-center px-4 py-3 rounded-xl font-bold text-sm transition-all ${
-              activeView === 'reports' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              activeView === 'reports' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-800 hover:text-white'
             }`}
           >
             <BarChart2 className="mr-3" size={18} /> Reports
@@ -1472,7 +1674,7 @@ export default function InksurgePOS() {
           <button 
             onClick={() => { setActiveView('settings'); setSidebarOpen(false); }}
             className={`w-full flex items-center px-4 py-3 rounded-xl font-bold text-sm transition-all ${
-              activeView === 'settings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              activeView === 'settings' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 dark:text-slate-500 hover:bg-slate-800 hover:text-white'
             }`}
           >
             <Settings className="mr-3" size={18} /> Settings
@@ -1481,9 +1683,9 @@ export default function InksurgePOS() {
 
         {/* Signed-in staff + logout */}
         {auth && user && user.email && (
-          <div className="px-6 pt-4 flex items-center justify-between text-xs text-slate-400 border-t border-slate-800">
+          <div className="px-6 pt-4 flex items-center justify-between text-xs text-slate-400 dark:text-slate-500 border-t border-slate-800">
             <span className="truncate flex items-center"><User size={12} className="mr-1.5 shrink-0" />{user.email}</span>
-            <button onClick={handleLogout} className="ml-2 shrink-0 font-bold text-slate-400 hover:text-white transition-colors">
+            <button onClick={handleLogout} className="ml-2 shrink-0 font-bold text-slate-400 dark:text-slate-500 hover:text-white transition-colors">
               Log out
             </button>
           </div>
@@ -1491,11 +1693,11 @@ export default function InksurgePOS() {
 
         {/* Footer Slogan */}
         <div className="p-6 border-t border-slate-800 bg-slate-900/50">
-           <div className="text-slate-400 mb-3 opacity-70">
+           <div className="text-slate-400 dark:text-slate-500 mb-3 opacity-70">
              <p className="text-sm font-bold italic">Your Prints,</p>
              <p className="text-sm font-bold italic ml-3 text-blue-400">Our Priority!</p>
            </div>
-           <div className="flex items-center text-xs text-slate-500">
+           <div className="flex items-center text-xs text-slate-500 dark:text-slate-400">
              <div className="w-2 h-2 rounded-full bg-emerald-400 mr-2 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"></div>
              Inksurge System Online
            </div>
@@ -1503,7 +1705,7 @@ export default function InksurgePOS() {
       </div>
 
       {/* Main View Container */}
-      <div className="flex-1 flex flex-col relative overflow-hidden bg-slate-100">
+      <div className="flex-1 flex flex-col relative overflow-hidden bg-slate-100 dark:bg-slate-950">
         {/* Mobile/tablet top bar */}
         <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-slate-900 text-white shadow-md z-20 shrink-0">
           <button
@@ -1531,18 +1733,18 @@ export default function InksurgePOS() {
       {/* Delete Confirmation Modal */}
       {orderToDelete && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 text-center animate-in fade-in zoom-in-95 duration-150">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-slate-800 text-center animate-in fade-in zoom-in-95 duration-150">
             <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
               <Trash2 size={24} />
             </div>
-            <h3 className="text-lg font-bold text-slate-800">Delete Transaction?</h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Are you sure you want to delete order for <span className="font-bold text-slate-700">{orderToDelete.customerName || 'N/A'}</span> (₱{orderToDelete.total?.toFixed(2)})? This action cannot be undone.
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Delete Transaction?</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              Are you sure you want to delete order for <span className="font-bold text-slate-700 dark:text-slate-200">{orderToDelete.customerName || 'N/A'}</span> (₱{orderToDelete.total?.toFixed(2)})? This action cannot be undone.
             </p>
             <div className="flex space-x-3 mt-6">
               <button 
                 onClick={() => setOrderToDelete(null)} 
-                className="flex-1 py-2.5 border border-slate-300 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-100 transition-colors"
+                className="flex-1 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs hover:bg-slate-100 dark:bg-slate-950 transition-colors"
               >
                 Cancel
               </button>
