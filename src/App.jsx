@@ -38,18 +38,55 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const DEFAULT_PRODUCTS = [
-  { id: 'p1', categoryId: 'cat_doc', name: 'Black & White\n(Text Only)', price: 4.00, unit: 'page', imageUrl: '', order: 1 },
-  { id: 'p2', categoryId: 'cat_doc', name: 'Black & White\n(Text+Image)', price: 5.00, unit: 'page', imageUrl: '', order: 2 },
-  { id: 'p3', categoryId: 'cat_doc', name: 'Colored\n(Text Only)', price: 6.00, unit: 'page', imageUrl: '', order: 3 },
-  { id: 'p4', categoryId: 'cat_doc', name: 'Colored\n(Text+Image)', price: 8.00, unit: 'page', imageUrl: '', order: 4 },
-  { id: 'p5', categoryId: 'cat_copy', name: 'Black & White\n(Document)', price: 3.00, unit: 'page', imageUrl: '', order: 1 },
-  { id: 'p6', categoryId: 'cat_copy', name: 'Colored\n(Document)', price: 8.00, unit: 'page', imageUrl: '', order: 2 },
-  { id: 'p7', categoryId: 'cat_photo', name: 'A4\n(Photo print)', price: 50.00, unit: 'pc', imageUrl: '', order: 1 },
-  { id: 'p8', categoryId: 'cat_photo', name: '8R\n(Photo print)', price: 45.00, unit: 'pc', imageUrl: '', order: 2 },
-  { id: 'p9', categoryId: 'cat_photo', name: '6R\n(Photo print)', price: 30.00, unit: 'pc', imageUrl: '', order: 3 },
-  { id: 'p10', categoryId: 'cat_photo', name: '5R\n(Photo print)', price: 18.00, unit: '2pcs', imageUrl: '', order: 4 },
-  { id: 'p11', categoryId: 'cat_lam', name: 'ID\n(250-microns)', price: 45.00, unit: 'pc', imageUrl: '', order: 1 },
-  { id: 'p12', categoryId: 'cat_lam', name: 'A4\n(Lamination)', price: 70.00, unit: 'pc', imageUrl: '', order: 2 },
+  { id: 'p1', categoryId: 'cat_doc', name: 'B&W - Text Only', price: 4.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394771818-d86a205c-a6d2-428b-8287-429b4feebcbc.jpg', order: 1 },
+  { id: 'p2', categoryId: 'cat_doc', name: 'B&W - Text+Image', price: 5.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394933925-1d7a77e1-5e41-45c6-b7c3-f34eef9756a4.jpg', order: 2 },
+  { id: 'p3', categoryId: 'cat_doc', name: 'B&W - Half-Image', price: 6.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394891530-560d6c01-68ab-4a3a-b191-cfd2af1c8ff9.jpg', order: 3 },
+  { id: 'p4', categoryId: 'cat_doc', name: 'B&W - Full-Image', price: 8.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394896239-51775420-b96b-4be3-85b1-bc5b69f8e84c.jpg', order: 4 },
+  { id: 'p5', categoryId: 'cat_doc', name: 'Color - Text Only', price: 6.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394899896-013db57a-45b5-436f-8ccd-ea509bca1b0b.jpg', order: 5 },
+  { id: 'p6', categoryId: 'cat_doc', name: 'Color - Text+Image', price: 8.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394905645-e58b54e5-608b-4773-8dd0-7b84e42a09c1.jpg', order: 6 },
+  { id: 'p7', categoryId: 'cat_doc', name: 'Color - Half-Image', price: 9.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394911987-44350b24-fcfb-4554-a2d1-a487cd5ad14a.jpg', order: 7 },
+  { id: 'p8', categoryId: 'cat_doc', name: 'Color - Full-Image', price: 13.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394919584-5c7fc92a-750f-4a6f-9f48-55ec12daf736.jpg', order: 8 },
+  { id: 'p9', categoryId: 'cat_copy', name: 'B&W - Document', price: 3.00, unit: 'page', imageUrl: 'https://imgv2-1-f.scribdassets.com/img/document/695036304/original/e0e5e955b0/1?v=1', order: 1 },
+  { id: 'p10', categoryId: 'cat_copy', name: 'B&W - Front&Back ID', price: 4.00, unit: 'page', imageUrl: 'https://i.ytimg.com/vi/6mlLQXX_xYo/maxresdefault.jpg', order: 2 },
+  { id: 'p11', categoryId: 'cat_copy', name: 'Color - Document/ID', price: 8.00, unit: 'page', imageUrl: 'https://i.pinimg.com/736x/54/39/16/543916392604de744f9cad775ac5a9b1.jpg', order: 3 },
+  { id: 'p12', categoryId: 'cat_copy', name: 'Scan', price: 10.00, unit: 'page', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/9/9a/Epson_V850_scanner_open_20230920.jpg?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=original', order: 4 },
+  { id: 'p13', categoryId: 'cat_photo', name: 'A4 Photo', price: 50.00, unit: 'pc', imageUrl: 'https://www.framesnow.com.au/cdn/shop/files/Premium_Timber_Finish_Black_A4_Picture_Frame_with_Matting_Professional_Display_for_Art_Prints_Certificates_1000x1000.webp?v=1759927052', order: 1 },
+  { id: 'p14', categoryId: 'cat_photo', name: '8R Photo', price: 45.00, unit: 'pc', imageUrl: 'https://ph-live-01.slatic.net/p/6a203ea2aadf198f1270eebb77535e75.jpg', order: 2 },
+  { id: 'p15', categoryId: 'cat_photo', name: '6R Photo', price: 30.00, unit: 'pc', imageUrl: 'https://ph-test-11.slatic.net/p/9b01ce43fd7bb467d2d8a740dd8ed71d.jpg', order: 3 },
+  { id: 'p16', categoryId: 'cat_photo', name: '5R Photo', price: 18.00, unit: 'pc', imageUrl: 'https://ph-test-11.slatic.net/p/2504cfbdc913b2503477d95a9cc571b1.jpg', order: 4 },
+  { id: 'p17', categoryId: 'cat_photo', name: '4R Photo', price: 16.00, unit: 'pc', imageUrl: 'https://ph-test-11.slatic.net/p/77712a4d0eb78f5b39c5e0f8ce94328b.jpg', order: 5 },
+  { id: 'p18', categoryId: 'cat_photo', name: '3R Photo', price: 11.00, unit: 'pc', imageUrl: 'https://ph-test-11.slatic.net/p/e59fca3c20288be30a38993609cced85.jpg', order: 6 },
+  { id: 'p19', categoryId: 'cat_photo', name: '2R / Wallet Size', price: 8.00, unit: 'pc', imageUrl: 'https://axwellwallet.com/cdn/shop/articles/1_5d1e2796-10f7-4ff5-8406-a0f94738b2e4.jpg?v=1738868313&width=2048', order: 7 },
+  { id: 'p20', categoryId: 'cat_photo', name: 'Instax Mini 4pcs', price: 30.00, unit: 'set', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS8M2m6PD1G5LlWFMXeN__OzgrWdG3i3ibtrYeSxBwDkw&s', order: 8 },
+  { id: 'p21', categoryId: 'cat_photo', name: 'Instax Mini 10pcs', price: 55.00, unit: 'set', imageUrl: 'https://p16-oec-sg.ibyteimg.com/tos-alisg-i-aphluv4xwc-sg/2684385081374a07ba1ce456997c1690~tplv-aphluv4xwc-crop-webp:4284:5712.webp?dr=15592&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=my2&from=2378011839', order: 9 },
+  { id: 'p22', categoryId: 'cat_photo', name: 'Instax Mini 20pcs', price: 95.00, unit: 'set', imageUrl: 'https://cf.shopee.ph/file/1041cab6489528f703c0ccd78b630f55', order: 10 },
+  { id: 'p23', categoryId: 'cat_photo', name: '3-Grid Photo Strip 2pcs', price: 20.00, unit: 'set', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSKmaNsOapOFAyHQMgDBC07yuwz00EfunQXqhDbpxrw4qM9CO5Pn_cKfWVe&s=10', order: 11 },
+  { id: 'p24', categoryId: 'cat_lam', name: 'ID 250mic', price: 45.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 1 },
+  { id: 'p25', categoryId: 'cat_lam', name: 'ID 125mic', price: 35.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 2 },
+  { id: 'p26', categoryId: 'cat_lam', name: 'ID 250mic - Print+Laminate', price: 55.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 3 },
+  { id: 'p27', categoryId: 'cat_lam', name: 'ID 125mic - Print+Laminate', price: 45.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 4 },
+  { id: 'p28', categoryId: 'cat_lam', name: 'A6 250mic', price: 50.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S8df17eaf802b490b80472358de5f55032.jpg', order: 5 },
+  { id: 'p29', categoryId: 'cat_lam', name: 'A6 125mic', price: 40.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S8df17eaf802b490b80472358de5f55032.jpg', order: 6 },
+  { id: 'p30', categoryId: 'cat_lam', name: 'A6 250mic - Print+Laminate', price: 65.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S8df17eaf802b490b80472358de5f55032.jpg', order: 7 },
+  { id: 'p31', categoryId: 'cat_lam', name: 'A6 125mic - Print+Laminate', price: 55.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S8df17eaf802b490b80472358de5f55032.jpg', order: 8 },
+  { id: 'p32', categoryId: 'cat_lam', name: 'A5 250mic', price: 58.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S1c23cadc729047a0944baf43033cf62c3.jpg', order: 9 },
+  { id: 'p33', categoryId: 'cat_lam', name: 'A5 125mic', price: 48.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S1c23cadc729047a0944baf43033cf62c3.jpg', order: 10 },
+  { id: 'p34', categoryId: 'cat_lam', name: 'A5 250mic - Print+Laminate', price: 73.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S1c23cadc729047a0944baf43033cf62c3.jpg', order: 11 },
+  { id: 'p35', categoryId: 'cat_lam', name: 'A5 125mic - Print + Laminate', price: 63.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S1c23cadc729047a0944baf43033cf62c3.jpg', order: 12 },
+  { id: 'p36', categoryId: 'cat_lam', name: 'A4 250mic', price: 70.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 13 },
+  { id: 'p37', categoryId: 'cat_lam', name: 'A4 125mic', price: 60.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 14 },
+  { id: 'p38', categoryId: 'cat_lam', name: 'A4 250mic - Print+Laminate', price: 85.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 15 },
+  { id: 'p39', categoryId: 'cat_lam', name: 'A4 125mic - Print+Laminate', price: 75.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 16 },
+  { id: 'p40', categoryId: 'cat_rush', name: 'Package A', price: 40.00, unit: 'set', imageUrl: '', order: 1 },
+  { id: 'p41', categoryId: 'cat_rush', name: 'Package B', price: 40.00, unit: 'set', imageUrl: '', order: 2 },
+  { id: 'p42', categoryId: 'cat_rush', name: 'Package C', price: 40.00, unit: 'set', imageUrl: '', order: 3 },
+  { id: 'p43', categoryId: 'cat_rush', name: 'Package D', price: 45.00, unit: 'set', imageUrl: '', order: 4 },
+  { id: 'p44', categoryId: 'cat_rush', name: 'Package E', price: 55.00, unit: 'set', imageUrl: '', order: 5 },
+  { id: 'p45', categoryId: 'cat_oth', name: 'Sticker Print - 1/4', price: 25.00, unit: 'page', imageUrl: '', order: 1 },
+  { id: 'p46', categoryId: 'cat_oth', name: 'Sticker Print - Half', price: 35.00, unit: 'page', imageUrl: '', order: 2 },
+  { id: 'p47', categoryId: 'cat_oth', name: 'Sticker Print - Full', price: 60.00, unit: 'page', imageUrl: '', order: 3 },
+  { id: 'p48', categoryId: 'cat_oth', name: 'Sintra - Flat', price: 135.00, unit: 'pc', imageUrl: '', order: 4 },
+  { id: 'p49', categoryId: 'cat_oth', name: 'Sintra - 3D Box', price: 200.00, unit: 'pc', imageUrl: '', order: 5 },
 ];
 
 function LoginScreen({ onLogin, error, loading }) {
@@ -246,17 +283,15 @@ export default function InksurgePOS() {
     }
   }, [categories, activeCategory]);
 
+  const generateLineId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
   const addToCart = (product, forceLong = false) => {
     setCart(prev => {
-      const existing = prev.find(item => item.productId === product.id);
-      if (existing) {
-        return prev.map(item => item.productId === product.id 
-          ? { ...item, qty: item.qty + 1, isLongSize: forceLong || item.isLongSize } 
-          : item
-        );
-      }
+      // Every add creates its own line, even for the same service, so the
+      // Long Size Paper checkbox can be set independently per line.
       const isDocOrCopy = product.categoryId === 'cat_doc' || product.categoryId === 'cat_copy';
       return [...prev, { 
+        lineId: generateLineId(),
         productId: product.id, 
         categoryId: product.categoryId,
         name: product.name, 
@@ -268,18 +303,18 @@ export default function InksurgePOS() {
     });
   };
 
-  const toggleCartItemLongSize = (productId) => {
+  const toggleCartItemLongSize = (lineId) => {
     setCart(prev => prev.map(item => {
-      if (item.productId === productId) {
+      if (item.lineId === lineId) {
         return { ...item, isLongSize: !item.isLongSize };
       }
       return item;
     }));
   };
 
-  const updateCartQty = (productId, delta) => {
+  const updateCartQty = (lineId, delta) => {
     setCart(prev => prev.map(item => {
-      if (item.productId === productId) {
+      if (item.lineId === lineId) {
         const newQty = Math.max(0, item.qty + delta);
         return { ...item, qty: newQty };
       }
@@ -287,8 +322,8 @@ export default function InksurgePOS() {
     }).filter(item => item.qty > 0));
   };
 
-  const removeFromCart = (productId) => {
-    setCart(prev => prev.filter(item => item.productId !== productId));
+  const removeFromCart = (lineId) => {
+    setCart(prev => prev.filter(item => item.lineId !== lineId));
   };
 
   const clearCart = () => {
@@ -381,7 +416,9 @@ export default function InksurgePOS() {
   };
 
   const handleEditOrder = (order) => {
-    setCart(order.items || []);
+    // Older saved orders may predate per-line IDs - backfill so each line
+    // still behaves as its own independent item when editing.
+    setCart((order.items || []).map(item => ({ ...item, lineId: item.lineId || generateLineId() })));
     let manual = order.additionalCharge || 0;
     // Account for legacy saved orders where long paper charge was bundled into additionalCharge
     if (order.longSizeCharge && manual >= order.longSizeCharge) {
@@ -1477,7 +1514,7 @@ export default function InksurgePOS() {
                 const itemUnitPrice = getItemUnitPrice(item);
                 const itemTotal = getItemTotal(item);
                 return (
-                  <div key={item.productId} className="py-2 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50/80 rounded-xl px-1 transition-colors">
+                  <div key={item.lineId} className="py-2 border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50/80 rounded-xl px-1 transition-colors">
                     <div className="flex items-center gap-2.5 text-xs">
                       {/* Compact Item Square Image Thumbnail */}
                       <div className="w-9 h-9 aspect-square rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0 p-0.5">
@@ -1498,7 +1535,7 @@ export default function InksurgePOS() {
                             <input 
                               type="checkbox"
                               checked={!!item.isLongSize}
-                              onChange={() => toggleCartItemLongSize(item.productId)}
+                              onChange={() => toggleCartItemLongSize(item.lineId)}
                               className="w-3.5 h-3.5 text-blue-600 rounded border-slate-300 dark:border-slate-600 focus:ring-blue-500 cursor-pointer"
                             />
                             <span>Long size <span className="text-blue-600 font-medium">(+₱2.00)</span></span>
@@ -1508,9 +1545,9 @@ export default function InksurgePOS() {
                       
                       {/* Quantity Selector */}
                       <div className="w-20 flex items-center justify-between bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 shadow-sm flex-shrink-0">
-                        <button onClick={() => updateCartQty(item.productId, -1)} className="p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-950 rounded"><Minus size={12}/></button>
+                        <button onClick={() => updateCartQty(item.lineId, -1)} className="p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-950 rounded"><Minus size={12}/></button>
                         <span className="font-bold text-slate-800 dark:text-slate-100 text-xs">{item.qty}</span>
-                        <button onClick={() => updateCartQty(item.productId, 1)} className="p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-950 rounded"><Plus size={12}/></button>
+                        <button onClick={() => updateCartQty(item.lineId, 1)} className="p-1 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:bg-slate-950 rounded"><Plus size={12}/></button>
                       </div>
                       
                       {/* Price per unit */}
@@ -1519,7 +1556,7 @@ export default function InksurgePOS() {
                       {/* Total Price & Delete Action */}
                       <div className="w-16 flex items-center justify-end font-black text-slate-900 dark:text-white text-xs flex-shrink-0">
                         <span>₱{itemTotal.toFixed(2)}</span>
-                        <button onClick={() => removeFromCart(item.productId)} className="text-slate-300 dark:text-slate-600 hover:text-red-500 ml-1 p-0.5">
+                        <button onClick={() => removeFromCart(item.lineId)} className="text-slate-300 dark:text-slate-600 hover:text-red-500 ml-1 p-0.5">
                           <X size={14}/>
                         </button>
                       </div>
