@@ -214,6 +214,7 @@ export default function InksurgePOS() {
   const [additionalChargeInput, setAdditionalChargeInput] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editDateTimeInput, setEditDateTimeInput] = useState(''); // only used while editing an existing order
   
   // Delete Modal State
   const [orderToDelete, setOrderToDelete] = useState(null);
@@ -459,6 +460,15 @@ export default function InksurgePOS() {
     setAdditionalChargeInput('');
     setCustomerName('');
     setEditingOrderId(null);
+    setEditDateTimeInput('');
+  };
+
+  // Formats a timestamp for a <input type="datetime-local"> value, in local time
+  // (not UTC - a plain toISOString() would shift the displayed time by the timezone offset).
+  const formatForDateTimeInput = (ts) => {
+    const d = new Date(ts);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
   // Instant update for manual additional charge on input change
@@ -513,7 +523,12 @@ export default function InksurgePOS() {
       additionalCharge: totalAdditionalCharge,
       total: cartTotal,
       customerName: customerName.trim(),
-      timestamp: editingOrderId ? (orders.find(o => o.id === editingOrderId)?.timestamp || Date.now()) : Date.now()
+      timestamp: editingOrderId
+        ? (() => {
+            const parsed = editDateTimeInput ? new Date(editDateTimeInput).getTime() : NaN;
+            return !isNaN(parsed) ? parsed : (orders.find(o => o.id === editingOrderId)?.timestamp || Date.now());
+          })()
+        : Date.now()
     };
 
     if (db && user && user.uid !== 'demo_user') {
@@ -555,6 +570,7 @@ export default function InksurgePOS() {
     setAdditionalChargeInput(manual > 0 ? manual.toString() : '');
     setCustomerName(order.customerName || '');
     setEditingOrderId(order.id);
+    setEditDateTimeInput(formatForDateTimeInput(order.timestamp || Date.now()));
     setActiveView('pos');
     setCartOpen(true);
   };
@@ -1972,6 +1988,22 @@ export default function InksurgePOS() {
               />
             </div>
           </div>
+
+          {/* Editable Date & Time - only shown when editing an existing order */}
+          {editingOrderId && (
+            <div className="pt-1">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1 flex items-center">
+                <Calendar size={12} className="mr-1.5 text-slate-400 dark:text-slate-500" /> Order Date & Time
+              </label>
+              <input
+                type="datetime-local"
+                value={editDateTimeInput}
+                onChange={(e) => setEditDateTimeInput(e.target.value)}
+                className="w-full p-2 pl-3 text-xs border border-slate-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">Changes where this order appears in Sales History and Reports.</p>
+            </div>
+          )}
 
           {/* Final Total */}
           <div className="flex justify-between items-center pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
