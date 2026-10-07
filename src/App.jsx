@@ -2,12 +2,13 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Printer, Home, FileText, BarChart2, Settings, Search, Plus, Minus, 
   Trash2, Edit, CheckCircle, X, Image as ImageIcon, Copy, Camera, FilePlus, 
-  Layers, AlignJustify, Calendar, RefreshCw, ArrowUp, ArrowDown, User, DollarSign, Download, Upload
+  Layers, AlignJustify, Calendar, RefreshCw, ArrowUp, ArrowDown, User, DollarSign, Download, Upload, GripVertical, Share2
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, doc, setDoc, onSnapshot, query, addDoc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import Papa from 'papaparse';
+import html2canvas from 'html2canvas';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -36,6 +37,8 @@ const DEFAULT_CATEGORIES = [
   { id: 'cat_rush', name: 'Rush ID', icon: 'id', order: 5 },
   { id: 'cat_oth', name: 'Others', icon: 'more', order: 6 },
 ];
+
+const CATEGORY_ORDER_MAP = DEFAULT_CATEGORIES.reduce((acc, c) => { acc[c.id] = c.order; return acc; }, {});
 
 const DEFAULT_PRODUCTS = [
   { id: 'p1', categoryId: 'cat_doc', name: 'B&W - Text Only', price: 4.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394771818-d86a205c-a6d2-428b-8287-429b4feebcbc.jpg', order: 1 },
@@ -89,7 +92,25 @@ const DEFAULT_PRODUCTS = [
   { id: 'p49', categoryId: 'cat_oth', name: 'Sintra - 3D Box', price: 200.00, unit: 'pc', imageUrl: '', order: 5 },
 ];
 
-function LoginScreen({ onLogin, error, loading }) {
+const DEFAULT_SYSTEM_NAME = 'Inksurge Prints';
+const DEFAULT_LOGO_URL = '';
+
+function BrandLogo({ logoUrl, size = 40, iconSize = 20, rounded = 'rounded-xl', className = '' }) {
+  return (
+    <div
+      className={`bg-blue-600 ${rounded} flex items-center justify-center shadow-md shadow-blue-500/30 overflow-hidden shrink-0 ${className}`}
+      style={{ width: size, height: size }}
+    >
+      {logoUrl ? (
+        <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
+      ) : (
+        <Printer size={iconSize} className="text-white" />
+      )}
+    </div>
+  );
+}
+
+function LoginScreen({ onLogin, error, loading, systemName, logoUrl }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -102,10 +123,8 @@ function LoginScreen({ onLogin, error, loading }) {
     <div className="flex flex-col h-screen items-center justify-center bg-slate-900 text-white px-4">
       <div className="w-full max-w-sm bg-slate-800 rounded-2xl p-8 shadow-2xl border border-slate-700">
         <div className="flex flex-col items-center mb-6">
-          <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center mb-3 shadow-md shadow-blue-500/30">
-            <Printer size={28} className="text-white" />
-          </div>
-          <h1 className="text-xl font-black tracking-tight">Inksurge Prints</h1>
+          <BrandLogo logoUrl={logoUrl} size={56} iconSize={28} className="mb-3" />
+          <h1 className="text-xl font-black tracking-tight">{systemName || DEFAULT_SYSTEM_NAME}</h1>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 uppercase tracking-wider font-semibold">Staff Sign In</p>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -152,6 +171,8 @@ export default function InksurgePOS() {
   const [loading, setLoading] = useState(true);
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const [systemName, setSystemName] = useState(DEFAULT_SYSTEM_NAME);
+  const [logoUrl, setLogoUrl] = useState(DEFAULT_LOGO_URL);
   
   // Navigation State
   const [activeView, setActiveView] = useState('pos'); // pos, orders, reports, settings
@@ -196,6 +217,99 @@ export default function InksurgePOS() {
   
   // Delete Modal State
   const [orderToDelete, setOrderToDelete] = useState(null);
+  const [viewingOrder, setViewingOrder] = useState(null);
+  const receiptRef = useRef(null);
+  const [processingReceipt, setProcessingReceipt] = useState(null); // 'download' | 'share' | null
+  const [receiptNotice, setReceiptNotice] = useState('');
+
+  useEffect(() => {
+    setProcessingReceipt(null);
+    setReceiptNotice('');
+  }, [viewingOrder]);
+
+  const captureReceiptCanvas = () => {
+    if (!receiptRef.current) return Promise.reject(new Error('Receipt not ready'));
+    return html2canvas(receiptRef.current, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+    });
+  };
+
+  const getReceiptFileName = () => {
+    const name = (viewingOrder?.customerName || 'Customer').replace(/[^a-z0-9]+/gi, '_');
+    const dateStr = viewingOrder?.timestamp ? new Date(viewingOrder.timestamp).toISOString().slice(0, 10) : 'order';
+    return `Receipt_${name}_${dateStr}.jpg`;
+  };
+
+  const handleDownloadReceipt = async () => {
+    setProcessingReceipt('download');
+    setReceiptNotice('');
+    try {
+      const canvas = await captureReceiptCanvas();
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = getReceiptFileName();
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Failed to generate receipt image:', err);
+      setReceiptNotice("Couldn't generate the receipt image. Please try again.");
+    } finally {
+      setProcessingReceipt(null);
+    }
+  };
+
+  const handleShareReceipt = async () => {
+    setProcessingReceipt('share');
+    setReceiptNotice('');
+    try {
+      const canvas = await captureReceiptCanvas();
+      const fileName = getReceiptFileName();
+
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          setReceiptNotice("Couldn't generate the receipt image. Please try again.");
+          setProcessingReceipt(null);
+          return;
+        }
+        const file = new File([blob], fileName, { type: 'image/jpeg' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: 'Receipt',
+              text: `Here's your receipt from ${systemName}.`,
+            });
+          } catch (err) {
+            // Share sheet dismissed/cancelled - not an error worth surfacing
+          }
+        } else {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          setReceiptNotice('Sharing isn\'t available here, so the image was downloaded instead — open Messenger and attach it from your downloads or photos.');
+        }
+        setProcessingReceipt(null);
+      }, 'image/jpeg', 0.92);
+    } catch (err) {
+      console.error('Failed to share receipt image:', err);
+      setReceiptNotice("Couldn't generate the receipt image. Please try again.");
+      setProcessingReceipt(null);
+    }
+  };
+
+  useEffect(() => {
+    document.title = systemName || DEFAULT_SYSTEM_NAME;
+  }, [systemName]);
 
   useEffect(() => {
     let isMounted = true;
@@ -239,6 +353,15 @@ export default function InksurgePOS() {
     if (!user || !db) return;
     const userId = user.uid;
 
+    const brandingRef = doc(db, 'artifacts', appId, 'shop', 'main');
+
+    // Subscribe to Branding (system name + logo), shared across every device
+    const unsubBranding = onSnapshot(brandingRef, (snap) => {
+      const data = snap.exists() ? snap.data() : {};
+      setSystemName(data.systemName || DEFAULT_SYSTEM_NAME);
+      setLogoUrl(data.logoUrl || DEFAULT_LOGO_URL);
+    }, (err) => console.warn("Firestore branding fallback:", err));
+
     const catRef = collection(db, 'artifacts', appId, 'shop', 'main', 'categories');
     const prodRef = collection(db, 'artifacts', appId, 'shop', 'main', 'products');
     const ordRef = collection(db, 'artifacts', appId, 'shop', 'main', 'orders');
@@ -259,7 +382,10 @@ export default function InksurgePOS() {
       if (snapshot.empty) {
         DEFAULT_PRODUCTS.forEach(prod => setDoc(doc(prodRef, prod.id), prod));
       } else {
-        const prods = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order || 0) - (b.order || 0));
+        const prods = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => {
+          const catDiff = (CATEGORY_ORDER_MAP[a.categoryId] ?? 999) - (CATEGORY_ORDER_MAP[b.categoryId] ?? 999);
+          return catDiff !== 0 ? catDiff : (a.order || 0) - (b.order || 0);
+        });
         setProducts(prods);
       }
     }, (err) => console.warn("Firestore products fallback:", err));
@@ -271,6 +397,7 @@ export default function InksurgePOS() {
     }, (err) => console.warn("Firestore orders fallback:", err));
 
     return () => {
+      if (unsubBranding) unsubBranding();
       if (unsubCat) unsubCat();
       if (unsubProd) unsubProd();
       if (unsubOrd) unsubOrd();
@@ -480,13 +607,89 @@ export default function InksurgePOS() {
   }
 
   if (auth && !user) {
-    return <LoginScreen onLogin={handleLogin} error={loginError} loading={loginLoading} />;
+    return <LoginScreen onLogin={handleLogin} error={loginError} loading={loginLoading} systemName={systemName} logoUrl={logoUrl} />;
   }
 
   const SettingsView = () => {
     const [editProd, setEditProd] = useState(null);
     const [editCat, setEditCat] = useState(null);
-    const [activeSettingsTab, setActiveSettingsTab] = useState('services'); // 'services' | 'categories'
+    const [activeSettingsTab, setActiveSettingsTab] = useState('services'); // 'services' | 'categories' | 'appearance'
+
+    // Branding (System Name + Logo) form state
+    const [draftSystemName, setDraftSystemName] = useState(systemName);
+    const [draftLogoUrl, setDraftLogoUrl] = useState(logoUrl);
+    const [savingBranding, setSavingBranding] = useState(false);
+    const [brandingSaved, setBrandingSaved] = useState(false);
+    const [logoError, setLogoError] = useState('');
+    const logoInputRef = useRef(null);
+
+    useEffect(() => { setDraftSystemName(systemName); }, [systemName]);
+    useEffect(() => { setDraftLogoUrl(logoUrl); }, [logoUrl]);
+
+    const handleLogoFileChange = (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      setLogoError('');
+      if (!file.type.startsWith('image/')) {
+        setLogoError('Please choose an image file (PNG, JPG, etc).');
+        e.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          // Resize client-side so the logo stays small and fast everywhere it's shown
+          const maxDim = 320;
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round(height * (maxDim / width));
+              width = maxDim;
+            } else {
+              width = Math.round(width * (maxDim / height));
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.clearRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+          setDraftLogoUrl(canvas.toDataURL('image/png'));
+        };
+        img.onerror = () => setLogoError("Couldn't read that image. Try a different file.");
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    };
+
+    const handleRemoveLogo = () => setDraftLogoUrl('');
+
+    const handleSaveBranding = async () => {
+      setSavingBranding(true);
+      const brandingData = {
+        systemName: draftSystemName.trim() || DEFAULT_SYSTEM_NAME,
+        logoUrl: draftLogoUrl || '',
+      };
+      if (db && user && user.uid !== 'demo_user') {
+        try {
+          await setDoc(doc(db, 'artifacts', appId, 'shop', 'main'), brandingData, { merge: true });
+        } catch (err) {
+          console.error('Failed to save branding:', err);
+        }
+      } else {
+        setSystemName(brandingData.systemName);
+        setLogoUrl(brandingData.logoUrl);
+      }
+      setSavingBranding(false);
+      setBrandingSaved(true);
+      setTimeout(() => setBrandingSaved(false), 2000);
+    };
+
+    const brandingDirty = draftSystemName !== systemName || draftLogoUrl !== logoUrl;
 
     // Save Product Handler
     const handleSaveProduct = async (e) => {
@@ -565,25 +768,112 @@ export default function InksurgePOS() {
     };
 
     // Reorder Product
-    const handleMoveProduct = async (index, direction) => {
-      const targetIndex = index + direction;
-      if (targetIndex < 0 || targetIndex >= products.length) return;
-      
-      const newProducts = [...products];
-      const temp = newProducts[index];
-      newProducts[index] = newProducts[targetIndex];
-      newProducts[targetIndex] = temp;
+    // Drag-to-reorder state: which item is being dragged, and which item it's
+    // currently hovering over. Reordering is always scoped to one category.
+    const [dragState, setDragState] = useState(null); // { categoryId, draggedId, overId }
 
-      // Update order property
-      const reordered = newProducts.map((p, idx) => ({ ...p, order: idx + 1 }));
-      setProducts(reordered);
+    const getCategoryProducts = (categoryId) => {
+      const base = products.filter(p => p.categoryId === categoryId).sort((a, b) => (a.order || 0) - (b.order || 0));
+      if (dragState && dragState.categoryId === categoryId && dragState.overId && dragState.draggedId !== dragState.overId) {
+        const fromIdx = base.findIndex(p => p.id === dragState.draggedId);
+        const toIdx = base.findIndex(p => p.id === dragState.overId);
+        if (fromIdx !== -1 && toIdx !== -1) {
+          const copy = [...base];
+          const [moved] = copy.splice(fromIdx, 1);
+          copy.splice(toIdx, 0, moved);
+          return copy;
+        }
+      }
+      return base;
+    };
+
+    const commitReorder = (categoryId, draggedId, overId) => {
+      if (!overId || draggedId === overId) return;
+      const base = products.filter(p => p.categoryId === categoryId).sort((a, b) => (a.order || 0) - (b.order || 0));
+      const fromIdx = base.findIndex(p => p.id === draggedId);
+      const toIdx = base.findIndex(p => p.id === overId);
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return;
+
+      const copy = [...base];
+      const [moved] = copy.splice(fromIdx, 1);
+      copy.splice(toIdx, 0, moved);
+      const reordered = copy.map((p, idx) => ({ ...p, order: idx + 1 }));
+
+      setProducts(prev => prev.map(p => reordered.find(rp => rp.id === p.id) || p));
 
       if (db && user && user.uid !== 'demo_user') {
+        const batch = writeBatch(db);
         reordered.forEach(p => {
-          updateDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'products', p.id), { order: p.order });
+          batch.update(doc(db, 'artifacts', appId, 'shop', 'main', 'products', p.id), { order: p.order });
         });
+        batch.commit().catch(err => console.error('Failed to save new order:', err));
       }
     };
+
+    useEffect(() => {
+      if (!dragState) return;
+
+      const handlePointerMove = (e) => {
+        const el = document.elementFromPoint(e.clientX, e.clientY);
+        const rowEl = el && el.closest('[data-row-id]');
+        if (rowEl) {
+          const overId = rowEl.getAttribute('data-row-id');
+          setDragState(prev => (prev && prev.overId !== overId) ? { ...prev, overId } : prev);
+        }
+      };
+
+      const handlePointerUp = () => {
+        setDragState(current => {
+          if (current) commitReorder(current.categoryId, current.draggedId, current.overId);
+          return null;
+        });
+      };
+
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerUp);
+      return () => {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerUp);
+      };
+    }, [dragState, products]);
+
+    const renderProductRow = (p, categoryId, draggable = true) => (
+      <div
+        key={p.id}
+        data-row-id={p.id}
+        className={`flex items-center gap-3 p-3 transition-colors ${
+          dragState?.draggedId === p.id ? 'opacity-40' : 'hover:bg-slate-50/80 dark:hover:bg-slate-900/50'
+        }`}
+      >
+        {draggable ? (
+          <button
+            onPointerDown={(e) => { e.preventDefault(); setDragState({ categoryId, draggedId: p.id, overId: p.id }); }}
+            className="cursor-grab active:cursor-grabbing p-1.5 text-slate-300 dark:text-slate-600 hover:text-slate-500 touch-none shrink-0"
+            title="Drag to reorder"
+          >
+            <GripVertical size={16} />
+          </button>
+        ) : (
+          <div className="w-[30px] shrink-0" />
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm whitespace-pre-line leading-snug">{p.name}</p>
+        </div>
+        <div className="text-sm font-bold text-blue-600 whitespace-nowrap shrink-0">
+          ₱{Number(p.price).toFixed(2)} <span className="text-slate-400 dark:text-slate-500 font-normal text-xs">/ {p.unit}</span>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button onClick={() => setEditProd(p)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+            <Edit size={16}/>
+          </button>
+          <button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+            <Trash2 size={16}/>
+          </button>
+        </div>
+      </div>
+    );
 
     return (
       <div className="p-8 h-full overflow-y-auto bg-slate-50 dark:bg-slate-900">
@@ -703,72 +993,50 @@ export default function InksurgePOS() {
                 </form>
               </div>
 
-              {/* Products Table */}
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <div className="p-4 border-b bg-slate-50 dark:bg-slate-900 flex justify-between items-center">
+              {/* Products List, grouped by Category */}
+              <div>
+                <div className="flex justify-between items-center mb-4">
                   <h3 className="font-bold text-slate-800 dark:text-slate-100">Current Services List</h3>
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Use ▲ ▼ to reorder items</span>
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 flex items-center">
+                    <GripVertical size={14} className="mr-1"/> Drag to reorder within a category
+                  </span>
                 </div>
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-500 bg-slate-50/50">
-                      <th className="p-4 w-12 text-center">Sort</th>
-                      <th className="p-4">Service Name</th>
-                      <th className="p-4">Category</th>
-                      <th className="p-4">Price</th>
-                      <th className="p-4 text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {products.map((p, idx) => (
-                      <tr key={p.id} className="border-b hover:bg-slate-50/80 transition-colors text-sm">
-                        <td className="p-2 text-center">
-                          <div className="flex flex-col items-center justify-center space-y-1">
-                            <button 
-                              onClick={() => handleMoveProduct(idx, -1)} 
-                              disabled={idx === 0}
-                              className="p-1 hover:bg-slate-200 dark:bg-slate-700 rounded disabled:opacity-30 text-slate-600 dark:text-slate-300"
-                            >
-                              <ArrowUp size={14}/>
-                            </button>
-                            <button 
-                              onClick={() => handleMoveProduct(idx, 1)} 
-                              disabled={idx === products.length - 1}
-                              className="p-1 hover:bg-slate-200 dark:bg-slate-700 rounded disabled:opacity-30 text-slate-600 dark:text-slate-300"
-                            >
-                              <ArrowDown size={14}/>
-                            </button>
-                          </div>
-                        </td>
-                        <td className="p-4 font-semibold text-slate-800 dark:text-slate-100 whitespace-pre-line leading-snug">{p.name}</td>
-                        <td className="p-4 text-slate-600 dark:text-slate-300">
-                          <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-200 rounded-md font-medium text-xs">
-                            {categories.find(c => c.id === p.categoryId)?.name || 'Unassigned'}
-                          </span>
-                        </td>
-                        <td className="p-4 font-bold text-blue-600">₱{Number(p.price).toFixed(2)} <span className="text-slate-400 dark:text-slate-500 font-normal text-xs">/ {p.unit}</span></td>
-                        <td className="p-4 text-center">
-                          <div className="flex justify-center space-x-2">
-                            <button 
-                              onClick={() => setEditProd(p)} 
-                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" 
-                              title="Edit"
-                            >
-                              <Edit size={18}/>
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteProduct(p.id)} 
-                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" 
-                              title="Delete"
-                            >
-                              <Trash2 size={18}/>
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+
+                {categories.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).map(cat => {
+                  const catProducts = getCategoryProducts(cat.id);
+                  if (catProducts.length === 0) return null;
+                  return (
+                    <div key={cat.id} className="mb-8 last:mb-0">
+                      <div className="flex items-center justify-between mb-3 px-1">
+                        <h4 className="font-black text-slate-700 dark:text-slate-200 text-sm uppercase tracking-wide">{cat.name}</h4>
+                        <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">
+                          {catProducts.length} service{catProducts.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 overflow-hidden">
+                        {catProducts.map(p => renderProductRow(p, cat.id, true))}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {(() => {
+                  const orphans = products.filter(p => !categories.some(c => c.id === p.categoryId));
+                  if (orphans.length === 0) return null;
+                  return (
+                    <div className="mb-8 last:mb-0">
+                      <div className="flex items-center justify-between mb-3 px-1">
+                        <h4 className="font-black text-slate-700 dark:text-slate-200 text-sm uppercase tracking-wide">Unassigned</h4>
+                        <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">
+                          {orphans.length} service{orphans.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 overflow-hidden">
+                        {orphans.map(p => renderProductRow(p, null, false))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </>
           ) : (
@@ -854,18 +1122,101 @@ export default function InksurgePOS() {
           )}
 
           {activeSettingsTab === 'appearance' && (
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 max-w-xl">
-              <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1">Dark Mode</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Switch the whole system to a darker color scheme. Your choice is remembered on this device.</p>
-              <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
-                <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{darkMode ? 'Dark mode is on' : 'Dark mode is off'}</span>
-                <button
-                  onClick={() => setDarkMode(d => !d)}
-                  aria-pressed={darkMode}
-                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors shrink-0 ${darkMode ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`}
-                >
-                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white dark:bg-slate-800 shadow transition-transform ${darkMode ? 'translate-x-6' : 'translate-x-1'}`} />
-                </button>
+            <div className="space-y-6 max-w-xl">
+              {/* Branding Settings */}
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1">Branding</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">Your system name and logo appear on the sign-in screen, the sidebar, and on receipts.</p>
+
+                {/* System Name */}
+                <div className="mb-6">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">System Name</label>
+                  <input
+                    type="text"
+                    value={draftSystemName}
+                    onChange={(e) => setDraftSystemName(e.target.value)}
+                    placeholder={DEFAULT_SYSTEM_NAME}
+                    maxLength={40}
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Logo */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">Logo</label>
+                  <div className="flex items-center gap-4">
+                    <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden shrink-0 bg-slate-50 dark:bg-slate-900">
+                      {draftLogoUrl ? (
+                        <img src={draftLogoUrl} alt="Logo preview" className="w-full h-full object-contain p-1.5" />
+                      ) : (
+                        <Printer size={28} className="text-slate-300 dark:text-slate-600" />
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        ref={logoInputRef}
+                        onChange={handleLogoFileChange}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => logoInputRef.current && logoInputRef.current.click()}
+                        className="flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors shadow-sm shadow-blue-200"
+                      >
+                        <Upload size={14} className="mr-1.5" /> {draftLogoUrl ? 'Change Logo' : 'Upload Logo'}
+                      </button>
+                      {draftLogoUrl && (
+                        <button
+                          type="button"
+                          onClick={handleRemoveLogo}
+                          className="flex items-center px-4 py-2 text-red-600 hover:bg-red-50 rounded-xl text-xs font-bold transition-colors border border-transparent hover:border-red-100"
+                        >
+                          <Trash2 size={14} className="mr-1.5" /> Remove Logo
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {logoError && <p className="text-xs font-semibold text-red-600 mt-2">{logoError}</p>}
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-3">
+                    Recommended: a square image, at least 256×256px (1:1 ratio), PNG with a transparent background works best. It's automatically resized after upload.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 mt-6 pt-5 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={handleSaveBranding}
+                    disabled={!brandingDirty || savingBranding}
+                    className="flex items-center px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold transition-all shadow-sm shadow-blue-200"
+                  >
+                    <CheckCircle size={14} className="mr-1.5" /> {savingBranding ? 'Saving...' : 'Save Branding'}
+                  </button>
+                  {brandingSaved && (
+                    <span className="text-xs font-bold text-emerald-600 flex items-center">
+                      <CheckCircle size={14} className="mr-1" /> Saved
+                    </span>
+                  )}
+                  {!brandingSaved && brandingDirty && (
+                    <span className="text-xs font-semibold text-amber-600">Unsaved changes</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Dark Mode */}
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6">
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1">Dark Mode</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Switch the whole system to a darker color scheme. Your choice is remembered on this device.</p>
+                <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{darkMode ? 'Dark mode is on' : 'Dark mode is off'}</span>
+                  <button
+                    onClick={() => setDarkMode(d => !d)}
+                    aria-pressed={darkMode}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors shrink-0 ${darkMode ? 'bg-blue-600' : 'bg-slate-300 dark:bg-slate-600'}`}
+                  >
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white dark:bg-slate-800 shadow transition-transform ${darkMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1305,6 +1656,12 @@ export default function InksurgePOS() {
                       <td className="p-4">
                         <div className="flex justify-center space-x-2">
                           <button 
+                            onClick={() => setViewingOrder(o)} 
+                            className="flex items-center px-3 py-1.5 bg-slate-100 dark:bg-slate-950 text-slate-700 dark:text-slate-200 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors text-xs font-bold border border-slate-200 dark:border-slate-700"
+                          >
+                            <FileText size={14} className="mr-1"/> View
+                          </button>
+                          <button 
                             onClick={() => handleEditOrder(o)} 
                             className="flex items-center px-3 py-1.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors text-xs font-bold border border-blue-100"
                           >
@@ -1662,12 +2019,10 @@ export default function InksurgePOS() {
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center mr-3 shadow-md shadow-blue-500/30">
-              <Printer size={22} className="text-white" />
-            </div>
-            <div>
-              <h1 className="text-lg font-black tracking-tight leading-none text-white">Inksurge Prints</h1>
+          <div className="flex items-center min-w-0">
+            <BrandLogo logoUrl={logoUrl} size={40} iconSize={22} className="mr-3" />
+            <div className="min-w-0">
+              <h1 className="text-lg font-black tracking-tight leading-none text-white truncate">{systemName}</h1>
               <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 font-semibold tracking-wider uppercase">Print • Copy • Scan</p>
             </div>
           </div>
@@ -1731,8 +2086,8 @@ export default function InksurgePOS() {
         {/* Footer Slogan */}
         <div className="p-6 border-t border-slate-800 bg-slate-900/50">
            <div className="text-slate-400 dark:text-slate-500 mb-3 opacity-70">
-             <p className="text-sm font-bold italic">Your Prints,</p>
-             <p className="text-sm font-bold italic ml-3 text-blue-400">Our Priority!</p>
+             <p className="text-sm font-bold italic">Quality Prints.</p>
+             <p className="text-sm font-bold italic ml-3 text-blue-400">Every Time!</p>
            </div>
            <div className="flex items-center text-xs text-slate-500 dark:text-slate-400">
              <div className="w-2 h-2 rounded-full bg-emerald-400 mr-2 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"></div>
@@ -1752,9 +2107,9 @@ export default function InksurgePOS() {
           >
             <AlignJustify size={22} />
           </button>
-          <div className="flex items-center">
-            <Printer size={16} className="mr-2 text-blue-400" />
-            <span className="font-black text-sm tracking-tight">Inksurge Prints</span>
+          <div className="flex items-center min-w-0">
+            <BrandLogo logoUrl={logoUrl} size={22} iconSize={13} rounded="rounded-md" className="mr-2" />
+            <span className="font-black text-sm tracking-tight truncate">{systemName}</span>
           </div>
           <div className="w-9" aria-hidden="true" />
         </div>
@@ -1790,6 +2145,141 @@ export default function InksurgePOS() {
                 className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold text-xs hover:bg-red-700 transition-colors shadow-md shadow-red-200"
               >
                 Delete Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receipt View Modal */}
+      {viewingOrder && (
+        <div
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setViewingOrder(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto relative animate-in fade-in zoom-in-95 duration-150"
+          >
+            <button
+              onClick={() => setViewingOrder(null)}
+              className="absolute top-3 right-3 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+              title="Close"
+            >
+              <X size={18} />
+            </button>
+
+            <div ref={receiptRef} className="p-6 text-slate-800 font-mono bg-white">
+              {/* Shop Header */}
+              <div className="flex flex-col items-center text-center mb-4">
+                <BrandLogo logoUrl={logoUrl} size={48} iconSize={24} className="mb-2" />
+                <h2 className="text-base font-black tracking-tight uppercase">{systemName}</h2>
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Print • Copy • Scan</p>
+              </div>
+
+              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
+
+              {/* Order Meta */}
+              <div className="text-xs space-y-1 mb-3">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Date</span>
+                  <span className="font-bold">{new Date(viewingOrder.timestamp).toLocaleDateString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Time</span>
+                  <span className="font-bold">{new Date(viewingOrder.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Customer</span>
+                  <span className="font-bold">{viewingOrder.customerName || 'Walk-in Customer'}</span>
+                </div>
+                {viewingOrder.id && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Order ID</span>
+                    <span className="font-bold text-[10px] break-all text-right ml-4">{String(viewingOrder.id).slice(-10)}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
+
+              {/* Items */}
+              <div className="text-xs space-y-2 mb-3">
+                {(viewingOrder.items || []).map((item, idx) => {
+                  const isDocOrCopy = item.categoryId === 'cat_doc' || item.categoryId === 'cat_copy';
+                  const unitP = Number(item.price || 0) + (isDocOrCopy && item.isLongSize ? 2.0 : 0);
+                  const lineTotal = unitP * (item.qty || 1);
+                  return (
+                    <div key={idx} className="flex justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold whitespace-pre-line leading-snug">{item.qty}x {(item.name || '').replace(/\n/g, ' ')}</p>
+                        {item.isLongSize && <p className="text-blue-600 text-[10px] font-semibold">+ Long Size Paper</p>}
+                      </div>
+                      <span className="font-bold whitespace-nowrap">₱{lineTotal.toFixed(2)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
+
+              {/* Totals */}
+              <div className="text-xs space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Subtotal</span>
+                  <span className="font-bold">₱{(viewingOrder.subtotal || 0).toFixed(2)}</span>
+                </div>
+                {viewingOrder.additionalCharge > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Additional Charge</span>
+                    <span className="font-bold">₱{Number(viewingOrder.additionalCharge).toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
+
+              <div className="flex justify-between items-center mb-4">
+                <span className="font-black text-sm uppercase tracking-wide">Total</span>
+                <span className="font-black text-xl">₱{(viewingOrder.total || 0).toFixed(2)}</span>
+              </div>
+
+              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
+
+              {/* Footer */}
+              <div className="text-center mt-4">
+                <p className="text-xs font-bold text-slate-700">Thank you for your business!</p>
+                <p className="text-[10px] text-blue-600 font-semibold italic mt-0.5">Quality Prints. Every Time!</p>
+              </div>
+            </div>
+
+            <div className="px-6 pb-6 space-y-2">
+              {receiptNotice && (
+                <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs font-semibold text-blue-700">
+                  {receiptNotice}
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleDownloadReceipt}
+                  disabled={!!processingReceipt}
+                  className="flex items-center justify-center py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs transition-colors"
+                >
+                  <Download size={14} className="mr-1.5"/> {processingReceipt === 'download' ? 'Preparing…' : 'Download'}
+                </button>
+                <button
+                  onClick={handleShareReceipt}
+                  disabled={!!processingReceipt}
+                  className="flex items-center justify-center py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs transition-colors"
+                >
+                  <Share2 size={14} className="mr-1.5"/> {processingReceipt === 'share' ? 'Preparing…' : 'Share'}
+                </button>
+              </div>
+              <button
+                onClick={() => setViewingOrder(null)}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors"
+              >
+                Close
               </button>
             </div>
           </div>
