@@ -59,6 +59,15 @@
     box-shadow: 0 0 0 1000px #0f172a inset;
   }
 
+  /* Elements with a border but no explicit border color: use a dark-friendly one in Dark Mode
+     (otherwise Tailwind's light default shows up as bright white lines). Explicit border
+     utilities still win. */
+  .dark *,
+  .dark ::before,
+  .dark ::after {
+    border-color: #334155; /* slate-700 */
+  }
+
   /* ---- Checkboxes / radios ---- */
   input[type='checkbox'],
   input[type='radio'] {

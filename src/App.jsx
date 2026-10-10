@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   Printer, Home, FileText, BarChart2, Settings, Search, Plus, Minus, 
   Trash2, Edit, CheckCircle, X, Image as ImageIcon, Copy, Camera, FilePlus, 
@@ -9,6 +9,7 @@ import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from
 import { getFirestore, collection, doc, setDoc, onSnapshot, query, addDoc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import Papa from 'papaparse';
 import html2canvas from 'html2canvas';
+import { buildReceipt, getManualCharge, formatPeso } from './receipt.js';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -39,6 +40,12 @@ const DEFAULT_CATEGORIES = [
 ];
 
 const CATEGORY_ORDER_MAP = DEFAULT_CATEGORIES.reduce((acc, c) => { acc[c.id] = c.order; return acc; }, {});
+
+const DEFAULT_PAYMENT_METHODS = [
+  { id: 'pm_cash', name: 'Cash', active: true, order: 1 },
+  { id: 'pm_gcash', name: 'GCash', active: true, order: 2 },
+];
+const DEFAULT_PAYMENT_METHOD_ID = 'pm_cash';
 
 const DEFAULT_PRODUCTS = [
   { id: 'p1', categoryId: 'cat_doc', name: 'B&W - Text Only', price: 4.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394771818-d86a205c-a6d2-428b-8287-429b4feebcbc.jpg', order: 1 },
@@ -92,6 +99,14 @@ const DEFAULT_PRODUCTS = [
   { id: 'p49', categoryId: 'cat_oth', name: 'Sintra - 3D Box', price: 200.00, unit: 'pc', imageUrl: '', order: 5 },
 ];
 
+// Returns a component whose identity never changes between renders, but which always runs
+// the latest render function stored in `ref.current`. Screens defined inside the main
+// component use this so their own state (tabs, filters, drafts) isn't reset every time
+// data arrives from the database.
+function useStableView(ref) {
+  return useCallback((props) => (ref.current ? ref.current(props) : null), [ref]);
+}
+
 const DEFAULT_CHARGE_NOTE = 'Editing / Formatting Fee';
 const DEFAULT_SYSTEM_NAME = 'Inksurge Prints';
 const DEFAULT_LOGO_URL = '';
@@ -109,6 +124,16 @@ function BrandLogo({ logoUrl, size = 40, iconSize = 20, rounded = 'rounded-xl', 
       )}
     </div>
   );
+}
+
+function PaymentBadge({ label, methodId }) {
+  if (!label) return <span className="text-xs text-slate-400 dark:text-slate-400" title="Payment method not recorded">—</span>;
+  const tone = methodId === 'pm_cash'
+    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+    : methodId === 'pm_gcash'
+      ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+      : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200';
+  return <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold whitespace-nowrap ${tone}`}>{label}</span>;
 }
 
 function LoginScreen({ onLogin, error, loading, systemName, logoUrl }) {
@@ -208,6 +233,7 @@ export default function InksurgePOS() {
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [products, setProducts] = useState(DEFAULT_PRODUCTS);
   const [orders, setOrders] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
   
   // Cart & Order State
   const [cart, setCart] = useState([]);
@@ -218,6 +244,38 @@ export default function InksurgePOS() {
   const [customerName, setCustomerName] = useState('');
   const [editingOrderId, setEditingOrderId] = useState(null);
   const [editDateTimeInput, setEditDateTimeInput] = useState(''); // only used while editing an existing order
+  const [paymentMethodId, setPaymentMethodId] = useState(DEFAULT_PAYMENT_METHOD_ID);
+
+  const sortedPaymentMethods = useMemo(
+    () => [...paymentMethods].sort((a, b) => (a.order || 0) - (b.order || 0) || String(a.name).localeCompare(String(b.name))),
+    [paymentMethods]
+  );
+  const activePaymentMethods = useMemo(() => sortedPaymentMethods.filter(m => m.active !== false), [sortedPaymentMethods]);
+  // Cash is the default; if it has been deactivated, fall back to the first active method
+  const defaultPaymentMethodId = useMemo(
+    () => (activePaymentMethods.find(m => m.id === DEFAULT_PAYMENT_METHOD_ID) || activePaymentMethods[0] || {}).id || '',
+    [activePaymentMethods]
+  );
+  // Dropdown options: active methods, plus the one already on an order being edited even if it was deactivated since
+  const paymentOptions = useMemo(() => {
+    const opts = [...activePaymentMethods];
+    const current = sortedPaymentMethods.find(m => m.id === paymentMethodId);
+    if (current && current.active === false) opts.push(current);
+    return opts;
+  }, [activePaymentMethods, sortedPaymentMethods, paymentMethodId]);
+
+  // Keep the selection valid for new orders (e.g. the chosen method got deactivated in Settings)
+  useEffect(() => {
+    if (editingOrderId) return;
+    if (!activePaymentMethods.some(m => m.id === paymentMethodId)) setPaymentMethodId(defaultPaymentMethodId);
+  }, [activePaymentMethods, defaultPaymentMethodId, paymentMethodId, editingOrderId]);
+
+  // Name shown for an order: the method's current name, or the name saved with the order if the method is gone
+  const getPaymentLabel = (o) => {
+    if (!o) return '';
+    const m = o.paymentMethodId ? paymentMethods.find(pm => pm.id === o.paymentMethodId) : null;
+    return m ? m.name : (o.paymentMethodName || '');
+  };
   
   // Delete Modal State
   const [orderToDelete, setOrderToDelete] = useState(null);
@@ -369,6 +427,7 @@ export default function InksurgePOS() {
     const catRef = collection(db, 'artifacts', appId, 'shop', 'main', 'categories');
     const prodRef = collection(db, 'artifacts', appId, 'shop', 'main', 'products');
     const ordRef = collection(db, 'artifacts', appId, 'shop', 'main', 'orders');
+    const pmRef = collection(db, 'artifacts', appId, 'shop', 'main', 'paymentMethods');
 
     // Subscribe to Categories
     const unsubCat = onSnapshot(query(catRef), (snapshot) => {
@@ -394,6 +453,15 @@ export default function InksurgePOS() {
       }
     }, (err) => console.warn("Firestore products fallback:", err));
 
+    // Subscribe to Payment Methods (Cash + GCash are created the first time)
+    const unsubPm = onSnapshot(query(pmRef), (snapshot) => {
+      if (snapshot.empty) {
+        DEFAULT_PAYMENT_METHODS.forEach(pm => setDoc(doc(pmRef, pm.id), pm));
+      } else {
+        setPaymentMethods(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+      }
+    }, (err) => console.warn("Firestore payment methods fallback:", err));
+
     // Subscribe to Orders
     const unsubOrd = onSnapshot(query(ordRef), (snapshot) => {
       const ords = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.timestamp - a.timestamp);
@@ -404,6 +472,7 @@ export default function InksurgePOS() {
       if (unsubBranding) unsubBranding();
       if (unsubCat) unsubCat();
       if (unsubProd) unsubProd();
+      if (unsubPm) unsubPm();
       if (unsubOrd) unsubOrd();
     };
   }, [user]);
@@ -477,6 +546,7 @@ export default function InksurgePOS() {
     setCustomerName('');
     setEditingOrderId(null);
     setEditDateTimeInput('');
+    setPaymentMethodId(defaultPaymentMethodId);
   };
 
   // Formats a timestamp for a <input type="datetime-local"> value, in local time
@@ -557,6 +627,8 @@ export default function InksurgePOS() {
       additionalChargeNote: totalAdditionalCharge > 0 ? additionalChargeNote.trim() : '',
       total: cartTotal,
       customerName: customerName.trim(),
+      paymentMethodId: paymentMethodId || '',
+      paymentMethodName: (sortedPaymentMethods.find(m => m.id === paymentMethodId) || {}).name || '',
       timestamp: editingOrderId
         ? (() => {
             const parsed = editDateTimeInput ? new Date(editDateTimeInput).getTime() : NaN;
@@ -595,17 +667,20 @@ export default function InksurgePOS() {
     // Older saved orders may predate per-line IDs - backfill so each line
     // still behaves as its own independent item when editing.
     setCart((order.items || []).map(item => ({ ...item, lineId: item.lineId || generateLineId() })));
-    let manual = order.additionalCharge || 0;
-    // Account for legacy saved orders where long paper charge was bundled into additionalCharge
-    if (order.longSizeCharge && manual >= order.longSizeCharge) {
-      manual = manual - order.longSizeCharge;
-    }
+    // Only the manual additional charge goes back into the field. The Long Size Paper fee is
+    // already part of each item's unit price, so it must not be taken out of (or added to) it.
+    const manual = getManualCharge(order);
     setAdditionalCharge(manual);
     setAdditionalChargeInput(manual > 0 ? manual.toString() : '');
     setAdditionalChargeNote(manual > 0 ? (order.additionalChargeNote || '') : '');
     // Don't auto-overwrite what was already saved on this order
     setNoteTouched(manual > 0);
     setCustomerName(order.customerName || '');
+    // Orders from before payment methods existed have none recorded; don't invent one
+    const savedMethod = order.paymentMethodId
+      ? paymentMethods.find(m => m.id === order.paymentMethodId)
+      : (order.paymentMethodName ? paymentMethods.find(m => String(m.name).toLowerCase() === order.paymentMethodName.toLowerCase()) : null);
+    setPaymentMethodId(savedMethod ? savedMethod.id : '');
     setEditingOrderId(order.id);
     setEditDateTimeInput(formatForDateTimeInput(order.timestamp || Date.now()));
     setActiveView('pos');
@@ -643,6 +718,13 @@ export default function InksurgePOS() {
     }
   };
 
+  const settingsRenderRef = useRef(null);
+  const ordersRenderRef = useRef(null);
+  const reportsRenderRef = useRef(null);
+  const SettingsView = useStableView(settingsRenderRef);
+  const OrdersView = useStableView(ordersRenderRef);
+  const ReportsView = useStableView(reportsRenderRef);
+
   const filteredProducts = products.filter(p => {
     const matchesCat = activeCategory ? p.categoryId === activeCategory : true;
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -663,10 +745,91 @@ export default function InksurgePOS() {
     return <LoginScreen onLogin={handleLogin} error={loginError} loading={loginLoading} systemName={systemName} logoUrl={logoUrl} />;
   }
 
-  const SettingsView = () => {
+  settingsRenderRef.current = () => {
     const [editProd, setEditProd] = useState(null);
     const [editCat, setEditCat] = useState(null);
-    const [activeSettingsTab, setActiveSettingsTab] = useState('services'); // 'services' | 'categories' | 'appearance'
+    const [activeSettingsTab, setActiveSettingsTab] = useState('services'); // 'services' | 'categories' | 'payments' | 'appearance'
+
+    // ---- Payment Methods management ----
+    const [editPm, setEditPm] = useState(null);
+    const [pmName, setPmName] = useState('');
+    const [pmNotice, setPmNotice] = useState(null); // { type: 'error' | 'info', text }
+
+    const isPmActive = (m) => m.active !== false;
+    const hasDb = () => db && user && user.uid !== 'demo_user';
+
+    // How many saved orders used this method (by id, or by saved name for orders imported without an id)
+    const countPaymentUsage = (m) => orders.filter(o =>
+      o.paymentMethodId === m.id ||
+      (!o.paymentMethodId && o.paymentMethodName && o.paymentMethodName.toLowerCase() === String(m.name).toLowerCase())
+    ).length;
+
+    const addPm = async (data) => {
+      if (hasDb()) {
+        try { await addDoc(collection(db, 'artifacts', appId, 'shop', 'main', 'paymentMethods'), data); }
+        catch (err) { console.error('Error adding payment method:', err); }
+      } else {
+        setPaymentMethods(prev => [...prev, { ...data, id: 'pm_' + Date.now() }]);
+      }
+    };
+    const updatePm = async (id, data) => {
+      if (hasDb()) {
+        try { await updateDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'paymentMethods', id), data); }
+        catch (err) { console.error('Error updating payment method:', err); }
+      } else {
+        setPaymentMethods(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
+      }
+    };
+    const removePm = async (id) => {
+      if (hasDb()) {
+        try { await deleteDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'paymentMethods', id)); }
+        catch (err) { console.error('Error deleting payment method:', err); }
+      } else {
+        setPaymentMethods(prev => prev.filter(m => m.id !== id));
+      }
+    };
+
+    const LAST_ACTIVE_MSG = 'At least one payment method must stay active so orders can still be completed.';
+
+    const cancelEditPm = () => { setEditPm(null); setPmName(''); setPmNotice(null); };
+
+    const handleSavePm = async (e) => {
+      e.preventDefault();
+      const name = pmName.trim();
+      if (!name) return;
+      const duplicate = paymentMethods.some(m => m.id !== editPm?.id && String(m.name).trim().toLowerCase() === name.toLowerCase());
+      if (duplicate) { setPmNotice({ type: 'error', text: `"${name}" already exists.` }); return; }
+
+      if (editPm) {
+        await updatePm(editPm.id, { name });
+      } else {
+        const maxOrder = paymentMethods.reduce((mx, m) => Math.max(mx, m.order || 0), 0);
+        await addPm({ name, active: true, order: maxOrder + 1 });
+      }
+      setEditPm(null); setPmName(''); setPmNotice(null);
+    };
+
+    const handleTogglePm = async (m) => {
+      if (isPmActive(m) && activePaymentMethods.length <= 1) { setPmNotice({ type: 'error', text: LAST_ACTIVE_MSG }); return; }
+      await updatePm(m.id, { active: !isPmActive(m) });
+      setPmNotice(null);
+    };
+
+    const handleDeletePm = async (m) => {
+      if (isPmActive(m) && activePaymentMethods.length <= 1) { setPmNotice({ type: 'error', text: LAST_ACTIVE_MSG }); return; }
+      const used = countPaymentUsage(m);
+      if (used > 0) {
+        // Never erase a method that old transactions point to - keep it, just inactive
+        if (isPmActive(m)) await updatePm(m.id, { active: false });
+        setPmNotice({
+          type: 'info',
+          text: `"${m.name}" is used by ${used} order${used === 1 ? '' : 's'}, so it was kept as inactive instead of deleted. Past orders will still show it.`
+        });
+        return;
+      }
+      await removePm(m.id);
+      if (editPm?.id === m.id) cancelEditPm(); else setPmNotice(null);
+    };
 
     // Branding (System Name + Logo) form state
     const [draftSystemName, setDraftSystemName] = useState(systemName);
@@ -956,6 +1119,14 @@ export default function InksurgePOS() {
                 Categories ({categories.length})
               </button>
               <button 
+                onClick={() => setActiveSettingsTab('payments')}
+                className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${
+                  activeSettingsTab === 'payments' ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white dark:text-white'
+                }`}
+              >
+                Payment Methods ({activePaymentMethods.length})
+              </button>
+              <button 
                 onClick={() => setActiveSettingsTab('appearance')}
                 className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${
                   activeSettingsTab === 'appearance' ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white dark:text-white'
@@ -1092,7 +1263,7 @@ export default function InksurgePOS() {
                 })()}
               </div>
             </>
-          ) : (
+          ) : activeSettingsTab === 'categories' ? (
             /* Category Management Tab */
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 h-fit">
@@ -1147,7 +1318,7 @@ export default function InksurgePOS() {
                 <div className="p-4 border-b bg-slate-50 dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100">Categories List</div>
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-400 bg-slate-50/50">
+                    <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/60">
                       <th className="p-4">Icon</th>
                       <th className="p-4">Category Name</th>
                       <th className="p-4 text-center">Actions</th>
@@ -1170,6 +1341,103 @@ export default function InksurgePOS() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          ) : null}
+
+          {activeSettingsTab === 'payments' && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 h-fit">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1">{editPm ? 'Edit Payment Method' : 'Add Payment Method'}</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Methods you add appear in the Payment Method dropdown on the Current Order.</p>
+                <form onSubmit={handleSavePm} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Payment Method Name</label>
+                    <input
+                      value={pmName}
+                      onChange={(e) => setPmName(e.target.value)}
+                      required
+                      maxLength={30}
+                      placeholder="e.g. Maya, Bank Transfer"
+                      className="w-full p-2.5 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    />
+                  </div>
+                  <div className="flex justify-end space-x-2 pt-2">
+                    {editPm && (
+                      <button type="button" onClick={cancelEditPm} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 text-sm font-bold">
+                        Cancel
+                      </button>
+                    )}
+                    <button type="submit" className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-md shadow-blue-200">
+                      {editPm ? 'Update' : 'Add'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <div className="md:col-span-2 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                <div className="p-4 border-b bg-slate-50 dark:bg-slate-900 font-bold text-slate-800 dark:text-slate-100">Payment Methods</div>
+
+                {pmNotice && (
+                  <div className={`m-4 px-4 py-3 rounded-xl text-sm font-semibold flex items-start justify-between gap-3 border ${
+                    pmNotice.type === 'error'
+                      ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-200'
+                      : 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-200'
+                  }`}>
+                    <span>{pmNotice.text}</span>
+                    <button onClick={() => setPmNotice(null)} className="shrink-0 opacity-70 hover:opacity-100" title="Dismiss"><X size={16} /></button>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/60">
+                        <th className="p-4">Name</th>
+                        <th className="p-4">Status</th>
+                        <th className="p-4">Used in</th>
+                        <th className="p-4 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedPaymentMethods.map(m => {
+                        const used = countPaymentUsage(m);
+                        const active = isPmActive(m);
+                        return (
+                          <tr key={m.id} className="border-b hover:bg-slate-50/80 dark:hover:bg-slate-700/50 transition-colors text-sm">
+                            <td className="p-4 font-bold text-slate-800 dark:text-slate-100">
+                              {m.name}
+                              {m.id === defaultPaymentMethodId && (
+                                <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] font-bold uppercase tracking-wide">Default</span>
+                              )}
+                            </td>
+                            <td className="p-4">
+                              <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-bold ${
+                                active
+                                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+                              }`}>{active ? 'Active' : 'Inactive'}</span>
+                            </td>
+                            <td className="p-4 text-slate-600 dark:text-slate-300 whitespace-nowrap">{used} order{used === 1 ? '' : 's'}</td>
+                            <td className="p-4">
+                              <div className="flex items-center justify-center gap-1">
+                                <button onClick={() => { setEditPm(m); setPmName(m.name); setPmNotice(null); }} className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 rounded-lg" title="Edit">
+                                  <Edit size={18}/>
+                                </button>
+                                <button onClick={() => handleTogglePm(m)} className="px-2.5 py-1.5 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg text-xs font-bold whitespace-nowrap">
+                                  {active ? 'Deactivate' : 'Activate'}
+                                </button>
+                                <button onClick={() => handleDeletePm(m)} className="p-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg" title={used > 0 ? 'In use - will be deactivated instead' : 'Delete'}>
+                                  <Trash2 size={18}/>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -1278,7 +1546,7 @@ export default function InksurgePOS() {
     );
   };
 
-  const ReportsView = () => {
+  reportsRenderRef.current = () => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
 
@@ -1322,12 +1590,13 @@ export default function InksurgePOS() {
 
     const handleDownloadCSV = () => {
       if (filteredOrders.length === 0) return;
-      const headers = ["Order ID", "Date", "Time", "Customer Name", "Items Purchased", "Subtotal (PHP)", "Additional Charge (PHP)", "Additional Charge Note", "Total Amount (PHP)"];
+      const headers = ["Order ID", "Date", "Time", "Customer Name", "Payment Method", "Items Purchased", "Subtotal (PHP)", "Additional Charge (PHP)", "Additional Charge Note", "Total Amount (PHP)"];
       const rows = filteredOrders.map(o => [
         `"${o.id}"`,
         `"${new Date(o.timestamp).toLocaleDateString()}"`,
         `"${new Date(o.timestamp).toLocaleTimeString()}"`,
         `"${(o.customerName || 'N/A').replace(/"/g, '""')}"`,
+        `"${getPaymentLabel(o).replace(/"/g, '""')}"`,
         `"${(o.items || []).map(i => `${i.qty}x ${i.name.replace(/\n/g, ' ')}${i.isLongSize ? ' [Long Paper]' : ''}`).join('; ')}"`,
         (o.subtotal || 0).toFixed(2),
         (o.additionalCharge || 0).toFixed(2),
@@ -1409,6 +1678,9 @@ export default function InksurgePOS() {
               const timeVal = findCol(row, ['time']);
               const combinedDate = timeVal ? `${dateVal} ${timeVal}` : dateVal;
               const customer = findCol(row, ['customer name', 'customer']);
+              const payment = findCol(row, ['payment method', 'payment']);
+              const payLabel = payment ? String(payment).trim() : '';
+              const payMatch = payLabel ? paymentMethods.find(m => String(m.name).trim().toLowerCase() === payLabel.toLowerCase()) : null;
               const itemsText = findCol(row, ['items purchased', 'items']);
 
               const subtotal = parseAmount(findCol(row, ['subtotal (php)', 'subtotal']));
@@ -1426,6 +1698,8 @@ export default function InksurgePOS() {
                 additionalChargeNote: additionalCharge > 0 && chargeNote ? String(chargeNote).trim() : '',
                 total: finalTotal,
                 customerName: (customer && String(customer).trim()) || 'Walk-in Customer',
+                paymentMethodId: payMatch ? payMatch.id : '',
+                paymentMethodName: payMatch ? payMatch.name : payLabel,
                 timestamp: parseDateValue(combinedDate),
                 importedAt: Date.now(),
               };
@@ -1602,10 +1876,11 @@ export default function InksurgePOS() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[700px]">
                   <thead>
-                    <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-400 bg-slate-50/50">
+                    <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/60">
                       <th className="p-4">Date & Time</th>
                       <th className="p-4">Order Ref</th>
                       <th className="p-4">Customer Name</th>
+                      <th className="p-4 hidden xl:table-cell">Payment</th>
                       <th className="p-4 w-1/3">Items Summary</th>
                       <th className="p-4 text-right">Total Amount</th>
                     </tr>
@@ -1618,7 +1893,11 @@ export default function InksurgePOS() {
                           <span className="text-xs text-slate-400 dark:text-slate-400 block">{new Date(o.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         </td>
                         <td className="p-4 text-xs font-mono text-slate-400 dark:text-slate-400">{o.id.slice(-6).toUpperCase()}</td>
-                        <td className="p-4 font-bold text-slate-800 dark:text-slate-100">{o.customerName || 'N/A'}</td>
+                        <td className="p-4 font-bold text-slate-800 dark:text-slate-100">
+                          {o.customerName || 'N/A'}
+                          <div className="xl:hidden mt-1.5 font-normal"><PaymentBadge label={getPaymentLabel(o)} methodId={o.paymentMethodId} /></div>
+                        </td>
+                        <td className="p-4 hidden xl:table-cell"><PaymentBadge label={getPaymentLabel(o)} methodId={o.paymentMethodId} /></td>
                       <td className="p-4 text-slate-600 dark:text-slate-300">
                         {o.items?.map((item, idx) => {
                           const unitP = Number(item.price) + ((item.categoryId === 'cat_doc' || item.categoryId === 'cat_copy') && item.isLongSize ? 2.0 : 0);
@@ -1649,7 +1928,7 @@ export default function InksurgePOS() {
     );
   };
 
-  const OrdersView = () => (
+  ordersRenderRef.current = () => (
     <div className="p-8 h-full overflow-y-auto bg-slate-50 dark:bg-slate-900">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
@@ -1676,6 +1955,7 @@ export default function InksurgePOS() {
                   <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-400 bg-slate-50 dark:bg-slate-900">
                     <th className="p-4">Date & Time</th>
                     <th className="p-4">Customer Name</th>
+                    <th className="p-4 hidden xl:table-cell">Payment</th>
                     <th className="p-4 w-1/3">Order Breakdown</th>
                     <th className="p-4 text-right">Total</th>
                     <th className="p-4 text-center">Actions</th>
@@ -1693,7 +1973,9 @@ export default function InksurgePOS() {
                           <User size={14} className="mr-1.5 text-slate-400 dark:text-slate-400" />
                           {o.customerName || 'N/A'}
                         </span>
+                        <div className="xl:hidden mt-1.5 font-normal"><PaymentBadge label={getPaymentLabel(o)} methodId={o.paymentMethodId} /></div>
                       </td>
+                      <td className="p-4 hidden xl:table-cell"><PaymentBadge label={getPaymentLabel(o)} methodId={o.paymentMethodId} /></td>
                       <td className="p-4 text-slate-600 dark:text-slate-300">
                         <div className="space-y-1">
                           {o.items?.map((item, idx) => {
@@ -2053,6 +2335,21 @@ export default function InksurgePOS() {
             </div>
           </div>
 
+          {/* Payment Method */}
+          <div className="pt-1">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1">Payment Method</label>
+            <select
+              value={paymentMethodId}
+              onChange={(e) => setPaymentMethodId(e.target.value)}
+              className="w-full p-2.5 text-sm border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-xl outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {paymentMethodId === '' && editingOrderId && <option value="">Not recorded</option>}
+              {paymentOptions.map(m => (
+                <option key={m.id} value={m.id}>{m.name}{m.active === false ? ' (inactive)' : ''}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Editable Date & Time - only shown when editing an existing order */}
           {editingOrderId && (
             <div className="pt-1">
@@ -2290,7 +2587,7 @@ export default function InksurgePOS() {
                   <span className="font-bold">{viewingOrder.customerName || 'Walk-in Customer'}</span>
                 </div>
                 {viewingOrder.id && (
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-baseline">
                     <span className="text-slate-500">Order ID</span>
                     <span className="font-bold text-[10px] break-all text-right ml-4">{String(viewingOrder.id).slice(-10)}</span>
                   </div>
@@ -2299,48 +2596,64 @@ export default function InksurgePOS() {
 
               <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
 
-              {/* Items */}
-              <div className="text-xs space-y-2 mb-3">
-                {(viewingOrder.items || []).map((item, idx) => {
-                  const isDocOrCopy = item.categoryId === 'cat_doc' || item.categoryId === 'cat_copy';
-                  const unitP = Number(item.price || 0) + (isDocOrCopy && item.isLongSize ? 2.0 : 0);
-                  const lineTotal = unitP * (item.qty || 1);
-                  return (
-                    <div key={idx} className="flex justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-bold whitespace-pre-line leading-snug">{item.qty}x {(item.name || '').replace(/\n/g, ' ')}</p>
-                        {item.isLongSize && <p className="text-blue-600 text-[10px] font-semibold">+ Long Size Paper</p>}
+              {/* Items, charges and totals (all figures come from buildReceipt so they add up exactly) */}
+              {(() => {
+                const receipt = buildReceipt(viewingOrder);
+                return (
+                  <>
+                    <div className="text-xs mb-3" data-testid="receipt-items">
+                      <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">
+                        <span>Item · Qty × Price</span>
+                        <span>Amount</span>
                       </div>
-                      <span className="font-bold whitespace-nowrap">₱{lineTotal.toFixed(2)}</span>
+                      <div className="space-y-3">
+                        {receipt.lines.map((line, idx) => (
+                          <div key={idx} data-testid="receipt-item">
+                            <p className="font-bold leading-snug break-words">{line.name}</p>
+                            {line.longSize && <p className="text-[10px] text-slate-500 leading-tight">Long Size Paper</p>}
+                            {receipt.itemized ? (
+                              <div className="flex justify-between gap-3 mt-0.5">
+                                <span className="text-slate-600">{line.qty} × {formatPeso(line.unitCents)}</span>
+                                <span className="font-bold whitespace-nowrap">{formatPeso(line.amountCents)}</span>
+                              </div>
+                            ) : (
+                              <p className="text-slate-600 mt-0.5">Qty: {line.qty}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
 
-              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
+                    <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
 
-              {/* Totals */}
-              <div className="text-xs space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Subtotal</span>
-                  <span className="font-bold">₱{(viewingOrder.subtotal || 0).toFixed(2)}</span>
-                </div>
-                {viewingOrder.additionalCharge > 0 && (
-                  <div className="flex justify-between gap-3">
-                    <span className="text-slate-500 min-w-0 break-words">
-                      {viewingOrder.additionalChargeNote ? viewingOrder.additionalChargeNote : 'Additional Charge'}
-                    </span>
-                    <span className="font-bold whitespace-nowrap">₱{Number(viewingOrder.additionalCharge).toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
+                    <div className="text-xs space-y-1.5">
+                      <div className="flex justify-between" data-testid="receipt-subtotal">
+                        <span className="text-slate-500">Subtotal</span>
+                        <span className="font-bold">{formatPeso(receipt.subtotalCents)}</span>
+                      </div>
+                      {receipt.charges.map((charge, idx) => (
+                        <div key={idx} className="flex justify-between gap-3" data-testid="receipt-charge">
+                          <span className="text-slate-500 min-w-0 break-words">{charge.label}</span>
+                          <span className="font-bold whitespace-nowrap">{formatPeso(charge.cents)}</span>
+                        </div>
+                      ))}
+                      {receipt.adjustmentCents !== 0 && (
+                        <div className="flex justify-between gap-3" data-testid="receipt-adjustment">
+                          <span className="text-slate-500">Adjustment</span>
+                          <span className="font-bold whitespace-nowrap">{formatPeso(receipt.adjustmentCents)}</span>
+                        </div>
+                      )}
+                    </div>
 
-              <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
+                    <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
 
-              <div className="flex justify-between items-center mb-4">
-                <span className="font-black text-sm uppercase tracking-wide">Total</span>
-                <span className="font-black text-xl">₱{(viewingOrder.total || 0).toFixed(2)}</span>
-              </div>
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="font-black text-sm uppercase tracking-wide">Grand Total</span>
+                      <span className="font-black text-xl" data-testid="receipt-total">{formatPeso(receipt.totalCents)}</span>
+                    </div>
+                  </>
+                );
+              })()}
 
               <div className="border-t-2 border-dashed border-slate-300 my-3"></div>
 
