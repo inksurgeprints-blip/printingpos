@@ -49,11 +49,11 @@ const DEFAULT_PAYMENT_METHODS = [
 const DEFAULT_PAYMENT_METHOD_ID = 'pm_cash';
 
 const DEFAULT_PRODUCTS = [
-  { id: 'p1', categoryId: 'cat_doc', name: 'B&W - Text Only', price: 4.00, unit: 'page', imageUrl: 'https://iili.io/nMifKtp.jpg', order: 1 },
-  { id: 'p2', categoryId: 'cat_doc', name: 'B&W - Text+Image', price: 5.00, unit: 'page', imageUrl: 'https://iili.io/nMiPeGS.jpg', order: 2 },
+  { id: 'p1', categoryId: 'cat_doc', name: 'B&W - Text Only', price: 4.00, unit: 'page', imageUrl: 'https://iili.io/nMiPgyb.jpg', order: 1 },
+  { id: 'p2', categoryId: 'cat_doc', name: 'B&W - Text+Image', price: 5.00, unit: 'page', imageUrl: 'https://iili.io/nMsSU5x.jpg', order: 2 },
   { id: 'p3', categoryId: 'cat_doc', name: 'B&W - Half-Image', price: 6.00, unit: 'page', imageUrl: 'https://iili.io/nMiP8F9.jpg', order: 3 },
-  { id: 'p4', categoryId: 'cat_doc', name: 'B&W - Full-Image', price: 8.00, unit: 'page', imageUrl: 'https://iili.io/nMiP4uj.jpg', order: 4 },
-  { id: 'p5', categoryId: 'cat_doc', name: 'Color - Text Only', price: 6.00, unit: 'page', imageUrl: 'https://iili.io/nMiPPZQ.jpg', order: 5 },
+  { id: 'p4', categoryId: 'cat_doc', name: 'B&W - Full-Image', price: 8.00, unit: 'page', imageUrl: 'https://iili.io/nMsUAru.jpg', order: 4 },
+  { id: 'p5', categoryId: 'cat_doc', name: 'Color - Text Only', price: 6.00, unit: 'page', imageUrl: 'https://iili.io/nMsgsSa.jpg', order: 5 },
   { id: 'p6', categoryId: 'cat_doc', name: 'Color - Text+Image', price: 8.00, unit: 'page', imageUrl: 'https://iili.io/nMiP6wx.jpg', order: 6 },
   { id: 'p7', categoryId: 'cat_doc', name: 'Color - Half-Image', price: 9.00, unit: 'page', imageUrl: 'https://iili.io/nMiPyAJ.jpg', order: 7 },
   { id: 'p8', categoryId: 'cat_doc', name: 'Color - Full-Image', price: 13.00, unit: 'page', imageUrl: 'https://iili.io/nMii9wv.jpg', order: 8 },
@@ -94,11 +94,11 @@ const DEFAULT_PRODUCTS = [
   { id: 'p40', categoryId: 'cat_rush', name: 'Package A', price: 40.00, unit: 'set', imageUrl: 'https://iili.io/nM637tt.jpg', order: 1 },
   { id: 'p41', categoryId: 'cat_rush', name: 'Package B', price: 40.00, unit: 'set', imageUrl: 'https://iili.io/nM635NI.jpg', order: 2 },
   { id: 'p42', categoryId: 'cat_rush', name: 'Package C', price: 40.00, unit: 'set', imageUrl: 'https://iili.io/nM63aoX.jpg', order: 3 },
-  { id: 'p43', categoryId: 'cat_rush', name: 'Package D', price: 45.00, unit: 'set', imageUrl: 'https://iili.io/nM635NI.jpg', order: 4 },
+  { id: 'p43', categoryId: 'cat_rush', name: 'Package D', price: 45.00, unit: 'set', imageUrl: 'https://iili.io/nMs41Q2.jpg', order: 4 },
   { id: 'p44', categoryId: 'cat_rush', name: 'Package E', price: 55.00, unit: 'set', imageUrl: 'https://iili.io/nM63cVn.jpg', order: 5 },
   { id: 'p45', categoryId: 'cat_oth', name: 'Sticker Print - 1/4', price: 25.00, unit: 'page', imageUrl: 'https://iili.io/nMiPtF1.jpg', order: 1 },
   { id: 'p46', categoryId: 'cat_oth', name: 'Sticker Print - Half', price: 35.00, unit: 'page', imageUrl: 'https://iili.io/nMiPDcF.jpg', order: 2 },
-  { id: 'p47', categoryId: 'cat_oth', name: 'Sticker Print - Full', price: 60.00, unit: 'page', imageUrl: 'https://iili.io/nMiPp9a.jpg', order: 3 },
+  { id: 'p47', categoryId: 'cat_oth', name: 'Sticker Print - Full', price: 60.00, unit: 'page', imageUrl: 'https://iili.io/nMs4lI4.jpg', order: 3 },
   { id: 'p48', categoryId: 'cat_oth', name: 'Sintra - Flat', price: 135.00, unit: 'pc', imageUrl: 'https://iili.io/nM67Tut.jpg', order: 4 },
   { id: 'p49', categoryId: 'cat_oth', name: 'Sintra - 3D Box', price: 200.00, unit: 'pc', imageUrl: 'https://iili.io/nM67uwX.jpg', order: 5 },
 ];

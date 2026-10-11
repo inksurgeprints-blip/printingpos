@@ -11,14 +11,23 @@
 // A version number saved in the database makes sure it runs once, so pictures changed
 // later in Settings are not overwritten again.
 
-export const CATALOG_VERSION = 2;
+export const CATALOG_VERSION = 3;
 export const CATALOG_NEW_ITEM_IDS = ['p50', 'p51', 'p52'];
+
+// What each release of the catalog changed. A shop only receives the releases that are NEWER than
+// the version saved in its database, so a later release never overwrites pictures that were changed
+// in Settings after an earlier one. (A shop that has never been updated receives all of them.)
+export const CATALOG_RELEASES = [
+  { version: 2, allImages: true, newIds: CATALOG_NEW_ITEM_IDS },                       // new Excel: all pictures + 3 new items
+  { version: 3, imageIds: ['p1', 'p2', 'p4', 'p5', 'p43', 'p47'] },                    // six pictures replaced
+];
 
 const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
 const orderOf = (p) => Number(p.order) || 0;
 
 // Pure: works out what needs to change. Nothing is written here.
-export function planCatalogMigration(liveProducts, catalog, newIds = []) {
+// `imageIds`: which catalog items get their picture updated (null = all of them).
+export function planCatalogMigration(liveProducts, catalog, newIds = [], imageIds = null) {
   const live = (liveProducts || []).map((p) => ({ ...p }));       // working copy
   const originalOrder = new Map(live.map((p) => [p.id, orderOf(p)]));
 
@@ -40,6 +49,7 @@ export function planCatalogMigration(liveProducts, catalog, newIds = []) {
   const imageUpdates = [];
   catalog.forEach((c) => {
     const l = pairOf.get(c.id);
+    if (imageIds && !imageIds.includes(c.id)) return;
     if (l && c.imageUrl && l.imageUrl !== c.imageUrl) imageUpdates.push({ id: l.id, imageUrl: c.imageUrl });
   });
 
@@ -92,7 +102,11 @@ export async function runCatalogMigration({ firestore, db, appId, liveProducts, 
   const savedVersion = snap.exists() ? Number(snap.data().catalogVersion) || 0 : 0;
   if (savedVersion >= version) return { skipped: true };
 
-  const plan = planCatalogMigration(liveProducts, catalog, newIds);
+  // Only the releases this shop hasn't had yet (a shop already on version 2 gets just version 3's pictures)
+  const due = CATALOG_RELEASES.filter((r) => r.version > savedVersion && r.version <= version);
+  const imageIds = due.some((r) => r.allImages) ? null : [...new Set(due.flatMap((r) => r.imageIds || []))];
+  const dueNewIds = [...new Set(due.flatMap((r) => r.newIds || []))].filter((id) => newIds.includes(id));
+  const plan = planCatalogMigration(liveProducts, catalog, dueNewIds, imageIds);
   const products = collection(db, 'artifacts', appId, 'shop', 'main', 'products');
   const batch = writeBatch(db);
   plan.imageUpdates.forEach((u) => batch.update(doc(products, u.id), { imageUrl: u.imageUrl }));
