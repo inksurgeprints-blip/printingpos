@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   Printer, Home, FileText, BarChart2, Settings, Search, Plus, Minus, 
-  Trash2, Edit, CheckCircle, X, Image as ImageIcon, Copy, Camera, FilePlus, 
+  Trash2, Edit, CheckCircle, X, Image as ImageIcon, Copy, Camera, 
   Layers, AlignJustify, Calendar, RefreshCw, ArrowUp, ArrowDown, User, DollarSign, Download, Upload, GripVertical, Share2
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
@@ -49,32 +49,32 @@ const DEFAULT_PAYMENT_METHODS = [
 const DEFAULT_PAYMENT_METHOD_ID = 'pm_cash';
 
 const DEFAULT_PRODUCTS = [
-  { id: 'p1', categoryId: 'cat_doc', name: 'B&W - Text Only', price: 4.00, unit: 'page', imageUrl: 'https://iili.io/nMiPgyb.jpg', order: 1 },
-  { id: 'p2', categoryId: 'cat_doc', name: 'B&W - Text+Image', price: 5.00, unit: 'page', imageUrl: 'https://iili.io/nMsSU5x.jpg', order: 2 },
-  { id: 'p3', categoryId: 'cat_doc', name: 'B&W - Half-Image', price: 6.00, unit: 'page', imageUrl: 'https://iili.io/nMiP8F9.jpg', order: 3 },
-  { id: 'p4', categoryId: 'cat_doc', name: 'B&W - Full-Image', price: 8.00, unit: 'page', imageUrl: 'https://iili.io/nMsUAru.jpg', order: 4 },
-  { id: 'p5', categoryId: 'cat_doc', name: 'Color - Text Only', price: 6.00, unit: 'page', imageUrl: 'https://iili.io/nMsgsSa.jpg', order: 5 },
-  { id: 'p6', categoryId: 'cat_doc', name: 'Color - Text+Image', price: 8.00, unit: 'page', imageUrl: 'https://iili.io/nMiP6wx.jpg', order: 6 },
-  { id: 'p7', categoryId: 'cat_doc', name: 'Color - Half-Image', price: 9.00, unit: 'page', imageUrl: 'https://iili.io/nMiPyAJ.jpg', order: 7 },
-  { id: 'p8', categoryId: 'cat_doc', name: 'Color - Full-Image', price: 13.00, unit: 'page', imageUrl: 'https://iili.io/nMii9wv.jpg', order: 8 },
-  { id: 'p9', categoryId: 'cat_copy', name: 'B&W - Document', price: 3.00, unit: 'page', imageUrl: 'https://iili.io/nMiPsnV.jpg', order: 1 },
-  { id: 'p10', categoryId: 'cat_copy', name: 'B&W - Front&Back ID', price: 4.00, unit: 'page', imageUrl: 'https://iili.io/nMiPQ6P.jpg', order: 2 },
-  { id: 'p11', categoryId: 'cat_copy', name: 'Color - Document/ID', price: 8.00, unit: 'page', imageUrl: 'https://iili.io/nMiPLMB.jpg', order: 3 },
+  { id: 'p1', categoryId: 'cat_doc', name: 'B&W - Text Only', price: 4.00, unit: 'page', imageUrl: 'https://i.imgur.com/N0OniFN.jpeg', order: 1 },
+  { id: 'p2', categoryId: 'cat_doc', name: 'B&W - Text+Image', price: 5.00, unit: 'page', imageUrl: 'https://i.imgur.com/XlM9S70.jpeg', order: 2 },
+  { id: 'p3', categoryId: 'cat_doc', name: 'B&W - Half-Image', price: 6.00, unit: 'page', imageUrl: 'https://i.imgur.com/m9FecaP.jpeg', order: 3 },
+  { id: 'p4', categoryId: 'cat_doc', name: 'B&W - Full-Image', price: 8.00, unit: 'page', imageUrl: 'https://i.imgur.com/0skoIzH.jpeg', order: 4 },
+  { id: 'p5', categoryId: 'cat_doc', name: 'Color - Text Only', price: 6.00, unit: 'page', imageUrl: 'https://i.imgur.com/4sLc77H.jpeg', order: 5 },
+  { id: 'p6', categoryId: 'cat_doc', name: 'Color - Text+Image', price: 8.00, unit: 'page', imageUrl: 'https://i.imgur.com/gK9Pcdn.jpeg', order: 6 },
+  { id: 'p7', categoryId: 'cat_doc', name: 'Color - Half-Image', price: 9.00, unit: 'page', imageUrl: 'https://i.imgur.com/Y9MIXKb.jpeg', order: 7 },
+  { id: 'p8', categoryId: 'cat_doc', name: 'Color - Full-Image', price: 13.00, unit: 'page', imageUrl: 'https://i.imgur.com/evkG932.jpeg', order: 8 },
+  { id: 'p9', categoryId: 'cat_copy', name: 'B&W - Document', price: 3.00, unit: 'page', imageUrl: 'https://i.imgur.com/38GTxMY.jpeg', order: 1 },
+  { id: 'p10', categoryId: 'cat_copy', name: 'B&W - Front&Back ID', price: 4.00, unit: 'page', imageUrl: 'https://i.imgur.com/CVy3tEN.jpeg', order: 2 },
+  { id: 'p11', categoryId: 'cat_copy', name: 'Color - Document/ID', price: 8.00, unit: 'page', imageUrl: 'https://i.imgur.com/3l5Kk7w.jpeg', order: 3 },
   { id: 'p12', categoryId: 'cat_copy', name: 'Scan', price: 10.00, unit: 'page', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/9/9a/Epson_V850_scanner_open_20230920.jpg?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=original', order: 4 },
-  { id: 'p13', categoryId: 'cat_photo', name: 'A4 Photo', price: 50.00, unit: 'pc', imageUrl: 'https://iili.io/nMPCI2e.jpg', order: 1 },
-  { id: 'p14', categoryId: 'cat_photo', name: '8R Photo', price: 45.00, unit: 'pc', imageUrl: 'https://iili.io/nMPC7hQ.jpg', order: 2 },
-  { id: 'p15', categoryId: 'cat_photo', name: '6R Photo', price: 30.00, unit: 'pc', imageUrl: 'https://iili.io/nMPC5Tx.jpg', order: 3 },
-  { id: 'p16', categoryId: 'cat_photo', name: '5R Photo', price: 18.00, unit: 'pc', imageUrl: 'https://iili.io/nMPCApj.jpg', order: 4 },
-  { id: 'p17', categoryId: 'cat_photo', name: '4R Photo', price: 16.00, unit: 'pc', imageUrl: 'https://iili.io/nMPCoE7.jpg', order: 5 },
-  { id: 'p18', categoryId: 'cat_photo', name: '3R Photo', price: 11.00, unit: 'pc', imageUrl: 'https://iili.io/nMPCx49.jpg', order: 6 },
-  { id: 'p19', categoryId: 'cat_photo', name: '2R / Wallet Size', price: 8.00, unit: 'pc', imageUrl: 'https://iili.io/nMPCTYu.jpg', order: 7 },
-  { id: 'p50', categoryId: 'cat_photo', name: '115gsm (1/4 Page)', price: 15.00, unit: 'page', imageUrl: 'https://iili.io/nMiidnp.jpg', order: 8 },
-  { id: 'p51', categoryId: 'cat_photo', name: '115gsm (Half Page)', price: 20.00, unit: 'page', imageUrl: 'https://iili.io/nMiPyAJ.jpg', order: 9 },
-  { id: 'p52', categoryId: 'cat_photo', name: '115gsm (Full Page)', price: 25.00, unit: 'page', imageUrl: 'https://iili.io/nMii9wv.jpg', order: 10 },
-  { id: 'p20', categoryId: 'cat_photo', name: 'Instax Mini 4pcs', price: 30.00, unit: 'set', imageUrl: 'https://iili.io/nMsqDlt.jpg', order: 11 },
-  { id: 'p21', categoryId: 'cat_photo', name: 'Instax Mini 10pcs', price: 55.00, unit: 'set', imageUrl: 'https://iili.io/nMsqtfI.jpg', order: 12 },
-  { id: 'p22', categoryId: 'cat_photo', name: 'Instax Mini 20pcs', price: 95.00, unit: 'set', imageUrl: 'https://iili.io/nMsqQiN.jpg', order: 13 },
-  { id: 'p23', categoryId: 'cat_photo', name: '3-Grid Photo Strip 2pcs', price: 20.00, unit: 'set', imageUrl: 'https://iili.io/nMszHMv.jpg', order: 14 },
+  { id: 'p13', categoryId: 'cat_photo', name: 'A4 Photo', price: 50.00, unit: 'pc', imageUrl: 'https://i.imgur.com/D6QZopo.jpeg', order: 1 },
+  { id: 'p14', categoryId: 'cat_photo', name: '8R Photo', price: 45.00, unit: 'pc', imageUrl: 'https://i.imgur.com/z4Yw5uz.jpeg', order: 2 },
+  { id: 'p15', categoryId: 'cat_photo', name: '6R Photo', price: 30.00, unit: 'pc', imageUrl: 'https://i.imgur.com/Wr3rdAC.jpeg', order: 3 },
+  { id: 'p16', categoryId: 'cat_photo', name: '5R Photo', price: 18.00, unit: 'pc', imageUrl: 'https://i.imgur.com/ZEQolCq.jpeg', order: 4 },
+  { id: 'p17', categoryId: 'cat_photo', name: '4R Photo', price: 16.00, unit: 'pc', imageUrl: 'https://i.imgur.com/dmstWTF.jpeg', order: 5 },
+  { id: 'p18', categoryId: 'cat_photo', name: '3R Photo', price: 11.00, unit: 'pc', imageUrl: 'https://i.imgur.com/wVXbJxu.jpeg', order: 6 },
+  { id: 'p19', categoryId: 'cat_photo', name: '2R / Wallet Size', price: 8.00, unit: 'pc', imageUrl: 'https://i.imgur.com/RNCwTAX.jpeg', order: 7 },
+  { id: 'p50', categoryId: 'cat_photo', name: '115gsm (1/4 Page)', price: 15.00, unit: 'page', imageUrl: 'https://i.imgur.com/e4VWfQP.jpeg', order: 8 },
+  { id: 'p51', categoryId: 'cat_photo', name: '115gsm (Half Page)', price: 20.00, unit: 'page', imageUrl: 'https://i.imgur.com/Y9MIXKb.jpeg', order: 9 },
+  { id: 'p52', categoryId: 'cat_photo', name: '115gsm (Full Page)', price: 25.00, unit: 'page', imageUrl: 'https://i.imgur.com/evkG932.jpeg', order: 10 },
+  { id: 'p20', categoryId: 'cat_photo', name: 'Instax Mini 4pcs', price: 30.00, unit: 'set', imageUrl: 'https://i.imgur.com/i4wpHVF.jpeg', order: 11 },
+  { id: 'p21', categoryId: 'cat_photo', name: 'Instax Mini 10pcs', price: 55.00, unit: 'set', imageUrl: 'https://i.imgur.com/UGJHYI3.jpeg', order: 12 },
+  { id: 'p22', categoryId: 'cat_photo', name: 'Instax Mini 20pcs', price: 95.00, unit: 'set', imageUrl: 'https://i.imgur.com/vmlMZFq.jpeg', order: 13 },
+  { id: 'p23', categoryId: 'cat_photo', name: '3-Grid Photo Strip 2pcs', price: 20.00, unit: 'set', imageUrl: 'https://i.imgur.com/aACyxTU.jpeg', order: 14 },
   { id: 'p24', categoryId: 'cat_lam', name: 'ID 250mic', price: 45.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 1 },
   { id: 'p25', categoryId: 'cat_lam', name: 'ID 125mic', price: 35.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 2 },
   { id: 'p26', categoryId: 'cat_lam', name: 'ID 250mic - Print+Laminate', price: 55.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 3 },
@@ -91,16 +91,16 @@ const DEFAULT_PRODUCTS = [
   { id: 'p37', categoryId: 'cat_lam', name: 'A4 125mic', price: 60.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 14 },
   { id: 'p38', categoryId: 'cat_lam', name: 'A4 250mic - Print+Laminate', price: 85.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 15 },
   { id: 'p39', categoryId: 'cat_lam', name: 'A4 125mic - Print+Laminate', price: 75.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 16 },
-  { id: 'p40', categoryId: 'cat_rush', name: 'Package A', price: 40.00, unit: 'set', imageUrl: 'https://iili.io/nM637tt.jpg', order: 1 },
-  { id: 'p41', categoryId: 'cat_rush', name: 'Package B', price: 40.00, unit: 'set', imageUrl: 'https://iili.io/nM635NI.jpg', order: 2 },
-  { id: 'p42', categoryId: 'cat_rush', name: 'Package C', price: 40.00, unit: 'set', imageUrl: 'https://iili.io/nM63aoX.jpg', order: 3 },
-  { id: 'p43', categoryId: 'cat_rush', name: 'Package D', price: 45.00, unit: 'set', imageUrl: 'https://iili.io/nMs41Q2.jpg', order: 4 },
-  { id: 'p44', categoryId: 'cat_rush', name: 'Package E', price: 55.00, unit: 'set', imageUrl: 'https://iili.io/nM63cVn.jpg', order: 5 },
-  { id: 'p45', categoryId: 'cat_oth', name: 'Sticker Print - 1/4', price: 25.00, unit: 'page', imageUrl: 'https://iili.io/nMiPtF1.jpg', order: 1 },
-  { id: 'p46', categoryId: 'cat_oth', name: 'Sticker Print - Half', price: 35.00, unit: 'page', imageUrl: 'https://iili.io/nMiPDcF.jpg', order: 2 },
-  { id: 'p47', categoryId: 'cat_oth', name: 'Sticker Print - Full', price: 60.00, unit: 'page', imageUrl: 'https://iili.io/nMs4lI4.jpg', order: 3 },
-  { id: 'p48', categoryId: 'cat_oth', name: 'Sintra - Flat', price: 135.00, unit: 'pc', imageUrl: 'https://iili.io/nM67Tut.jpg', order: 4 },
-  { id: 'p49', categoryId: 'cat_oth', name: 'Sintra - 3D Box', price: 200.00, unit: 'pc', imageUrl: 'https://iili.io/nM67uwX.jpg', order: 5 },
+  { id: 'p40', categoryId: 'cat_rush', name: 'Package A', price: 40.00, unit: 'set', imageUrl: 'https://i.imgur.com/B9o1kYA.jpeg', order: 1 },
+  { id: 'p41', categoryId: 'cat_rush', name: 'Package B', price: 40.00, unit: 'set', imageUrl: 'https://i.imgur.com/39QU8x4.jpeg', order: 2 },
+  { id: 'p42', categoryId: 'cat_rush', name: 'Package C', price: 40.00, unit: 'set', imageUrl: 'https://i.imgur.com/HjQTeYY.jpeg', order: 3 },
+  { id: 'p43', categoryId: 'cat_rush', name: 'Package D', price: 45.00, unit: 'set', imageUrl: 'https://i.imgur.com/dxCeY6e.jpeg', order: 4 },
+  { id: 'p44', categoryId: 'cat_rush', name: 'Package E', price: 55.00, unit: 'set', imageUrl: 'https://i.imgur.com/3s1Hrji.jpeg', order: 5 },
+  { id: 'p45', categoryId: 'cat_oth', name: 'Sticker Print - 1/4', price: 25.00, unit: 'page', imageUrl: 'https://i.imgur.com/22YZZ47.jpeg', order: 1 },
+  { id: 'p46', categoryId: 'cat_oth', name: 'Sticker Print - Half', price: 35.00, unit: 'page', imageUrl: 'https://i.imgur.com/ZXOxieY.jpeg', order: 2 },
+  { id: 'p47', categoryId: 'cat_oth', name: 'Sticker Print - Full', price: 60.00, unit: 'page', imageUrl: 'https://i.imgur.com/pXQSGM7.jpeg', order: 3 },
+  { id: 'p48', categoryId: 'cat_oth', name: 'Sintra - Flat', price: 135.00, unit: 'pc', imageUrl: 'https://i.imgur.com/lJM48ED.jpeg', order: 4 },
+  { id: 'p49', categoryId: 'cat_oth', name: 'Sintra - 3D Box', price: 200.00, unit: 'pc', imageUrl: 'https://i.imgur.com/HDwmELT.jpeg', order: 5 },
 ];
 
 // Returns a component whose identity never changes between renders, but which always runs
@@ -127,6 +127,22 @@ function BrandLogo({ logoUrl, size = 40, iconSize = 20, rounded = 'rounded-xl', 
         <Printer size={iconSize} className="text-white" />
       )}
     </div>
+  );
+}
+
+// ID card icon, drawn in the same style as the other (Lucide) icons: 24x24 grid, 2px rounded
+// outline, colored by the surrounding text. The installed Lucide version has no ID-card icon.
+function IdCard({ size = 24, className = '' }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+         className={className} aria-hidden="true">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <circle cx="9" cy="11" r="2" />
+      <path d="M6.17 15a3 3 0 0 1 5.66 0" />
+      <path d="M15 10h4" />
+      <path d="M15 14h4" />
+    </svg>
   );
 }
 
@@ -731,7 +747,7 @@ export default function InksurgePOS() {
       case 'copy': return <Copy size={22} className="mb-1" />;
       case 'camera': return <Camera size={22} className="mb-1" />;
       case 'layers': return <Layers size={22} className="mb-1" />;
-      case 'id': return <FilePlus size={22} className="mb-1" />;
+      case 'id': return <IdCard size={22} className="mb-1" />;
       default: return <AlignJustify size={22} className="mb-1" />;
     }
   };
