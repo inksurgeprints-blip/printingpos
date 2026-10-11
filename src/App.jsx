@@ -6,10 +6,11 @@ import {
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, onSnapshot, query, addDoc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { getFirestore, collection, doc, setDoc, getDoc, onSnapshot, query, addDoc, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import Papa from 'papaparse';
 import html2canvas from 'html2canvas';
 import { buildReceipt, getManualCharge, formatPeso } from './receipt.js';
+import { CATALOG_VERSION, runCatalogMigration } from './catalogSync.js';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -48,29 +49,32 @@ const DEFAULT_PAYMENT_METHODS = [
 const DEFAULT_PAYMENT_METHOD_ID = 'pm_cash';
 
 const DEFAULT_PRODUCTS = [
-  { id: 'p1', categoryId: 'cat_doc', name: 'B&W - Text Only', price: 4.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394771818-d86a205c-a6d2-428b-8287-429b4feebcbc.jpg', order: 1 },
-  { id: 'p2', categoryId: 'cat_doc', name: 'B&W - Text+Image', price: 5.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394933925-1d7a77e1-5e41-45c6-b7c3-f34eef9756a4.jpg', order: 2 },
-  { id: 'p3', categoryId: 'cat_doc', name: 'B&W - Half-Image', price: 6.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394891530-560d6c01-68ab-4a3a-b191-cfd2af1c8ff9.jpg', order: 3 },
-  { id: 'p4', categoryId: 'cat_doc', name: 'B&W - Full-Image', price: 8.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394896239-51775420-b96b-4be3-85b1-bc5b69f8e84c.jpg', order: 4 },
-  { id: 'p5', categoryId: 'cat_doc', name: 'Color - Text Only', price: 6.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394899896-013db57a-45b5-436f-8ccd-ea509bca1b0b.jpg', order: 5 },
-  { id: 'p6', categoryId: 'cat_doc', name: 'Color - Text+Image', price: 8.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394905645-e58b54e5-608b-4773-8dd0-7b84e42a09c1.jpg', order: 6 },
-  { id: 'p7', categoryId: 'cat_doc', name: 'Color - Half-Image', price: 9.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394911987-44350b24-fcfb-4554-a2d1-a487cd5ad14a.jpg', order: 7 },
-  { id: 'p8', categoryId: 'cat_doc', name: 'Color - Full-Image', price: 13.00, unit: 'page', imageUrl: 'https://www.image2url.com/r2/default/images/1790394919584-5c7fc92a-750f-4a6f-9f48-55ec12daf736.jpg', order: 8 },
-  { id: 'p9', categoryId: 'cat_copy', name: 'B&W - Document', price: 3.00, unit: 'page', imageUrl: 'https://imgv2-1-f.scribdassets.com/img/document/695036304/original/e0e5e955b0/1?v=1', order: 1 },
-  { id: 'p10', categoryId: 'cat_copy', name: 'B&W - Front&Back ID', price: 4.00, unit: 'page', imageUrl: 'https://i.ytimg.com/vi/6mlLQXX_xYo/maxresdefault.jpg', order: 2 },
-  { id: 'p11', categoryId: 'cat_copy', name: 'Color - Document/ID', price: 8.00, unit: 'page', imageUrl: 'https://i.pinimg.com/736x/54/39/16/543916392604de744f9cad775ac5a9b1.jpg', order: 3 },
+  { id: 'p1', categoryId: 'cat_doc', name: 'B&W - Text Only', price: 4.00, unit: 'page', imageUrl: 'https://iili.io/nMifKtp.jpg', order: 1 },
+  { id: 'p2', categoryId: 'cat_doc', name: 'B&W - Text+Image', price: 5.00, unit: 'page', imageUrl: 'https://iili.io/nMiPeGS.jpg', order: 2 },
+  { id: 'p3', categoryId: 'cat_doc', name: 'B&W - Half-Image', price: 6.00, unit: 'page', imageUrl: 'https://iili.io/nMiP8F9.jpg', order: 3 },
+  { id: 'p4', categoryId: 'cat_doc', name: 'B&W - Full-Image', price: 8.00, unit: 'page', imageUrl: 'https://iili.io/nMiP4uj.jpg', order: 4 },
+  { id: 'p5', categoryId: 'cat_doc', name: 'Color - Text Only', price: 6.00, unit: 'page', imageUrl: 'https://iili.io/nMiPPZQ.jpg', order: 5 },
+  { id: 'p6', categoryId: 'cat_doc', name: 'Color - Text+Image', price: 8.00, unit: 'page', imageUrl: 'https://iili.io/nMiP6wx.jpg', order: 6 },
+  { id: 'p7', categoryId: 'cat_doc', name: 'Color - Half-Image', price: 9.00, unit: 'page', imageUrl: 'https://iili.io/nMiPyAJ.jpg', order: 7 },
+  { id: 'p8', categoryId: 'cat_doc', name: 'Color - Full-Image', price: 13.00, unit: 'page', imageUrl: 'https://iili.io/nMii9wv.jpg', order: 8 },
+  { id: 'p9', categoryId: 'cat_copy', name: 'B&W - Document', price: 3.00, unit: 'page', imageUrl: 'https://iili.io/nMiPsnV.jpg', order: 1 },
+  { id: 'p10', categoryId: 'cat_copy', name: 'B&W - Front&Back ID', price: 4.00, unit: 'page', imageUrl: 'https://iili.io/nMiPQ6P.jpg', order: 2 },
+  { id: 'p11', categoryId: 'cat_copy', name: 'Color - Document/ID', price: 8.00, unit: 'page', imageUrl: 'https://iili.io/nMiPLMB.jpg', order: 3 },
   { id: 'p12', categoryId: 'cat_copy', name: 'Scan', price: 10.00, unit: 'page', imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/9/9a/Epson_V850_scanner_open_20230920.jpg?utm_source=en.wikipedia.org&utm_campaign=index&utm_content=original', order: 4 },
-  { id: 'p13', categoryId: 'cat_photo', name: 'A4 Photo', price: 50.00, unit: 'pc', imageUrl: 'https://www.framesnow.com.au/cdn/shop/files/Premium_Timber_Finish_Black_A4_Picture_Frame_with_Matting_Professional_Display_for_Art_Prints_Certificates_1000x1000.webp?v=1759927052', order: 1 },
-  { id: 'p14', categoryId: 'cat_photo', name: '8R Photo', price: 45.00, unit: 'pc', imageUrl: 'https://ph-live-01.slatic.net/p/6a203ea2aadf198f1270eebb77535e75.jpg', order: 2 },
-  { id: 'p15', categoryId: 'cat_photo', name: '6R Photo', price: 30.00, unit: 'pc', imageUrl: 'https://ph-test-11.slatic.net/p/9b01ce43fd7bb467d2d8a740dd8ed71d.jpg', order: 3 },
-  { id: 'p16', categoryId: 'cat_photo', name: '5R Photo', price: 18.00, unit: 'pc', imageUrl: 'https://ph-test-11.slatic.net/p/2504cfbdc913b2503477d95a9cc571b1.jpg', order: 4 },
-  { id: 'p17', categoryId: 'cat_photo', name: '4R Photo', price: 16.00, unit: 'pc', imageUrl: 'https://ph-test-11.slatic.net/p/77712a4d0eb78f5b39c5e0f8ce94328b.jpg', order: 5 },
-  { id: 'p18', categoryId: 'cat_photo', name: '3R Photo', price: 11.00, unit: 'pc', imageUrl: 'https://ph-test-11.slatic.net/p/e59fca3c20288be30a38993609cced85.jpg', order: 6 },
-  { id: 'p19', categoryId: 'cat_photo', name: '2R / Wallet Size', price: 8.00, unit: 'pc', imageUrl: 'https://axwellwallet.com/cdn/shop/articles/1_5d1e2796-10f7-4ff5-8406-a0f94738b2e4.jpg?v=1738868313&width=2048', order: 7 },
-  { id: 'p20', categoryId: 'cat_photo', name: 'Instax Mini 4pcs', price: 30.00, unit: 'set', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS8M2m6PD1G5LlWFMXeN__OzgrWdG3i3ibtrYeSxBwDkw&s', order: 8 },
-  { id: 'p21', categoryId: 'cat_photo', name: 'Instax Mini 10pcs', price: 55.00, unit: 'set', imageUrl: 'https://p16-oec-sg.ibyteimg.com/tos-alisg-i-aphluv4xwc-sg/2684385081374a07ba1ce456997c1690~tplv-aphluv4xwc-crop-webp:4284:5712.webp?dr=15592&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=e1be8f53&idc=my2&from=2378011839', order: 9 },
-  { id: 'p22', categoryId: 'cat_photo', name: 'Instax Mini 20pcs', price: 95.00, unit: 'set', imageUrl: 'https://cf.shopee.ph/file/1041cab6489528f703c0ccd78b630f55', order: 10 },
-  { id: 'p23', categoryId: 'cat_photo', name: '3-Grid Photo Strip 2pcs', price: 20.00, unit: 'set', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSKmaNsOapOFAyHQMgDBC07yuwz00EfunQXqhDbpxrw4qM9CO5Pn_cKfWVe&s=10', order: 11 },
+  { id: 'p13', categoryId: 'cat_photo', name: 'A4 Photo', price: 50.00, unit: 'pc', imageUrl: 'https://iili.io/nMPCI2e.jpg', order: 1 },
+  { id: 'p14', categoryId: 'cat_photo', name: '8R Photo', price: 45.00, unit: 'pc', imageUrl: 'https://iili.io/nMPC7hQ.jpg', order: 2 },
+  { id: 'p15', categoryId: 'cat_photo', name: '6R Photo', price: 30.00, unit: 'pc', imageUrl: 'https://iili.io/nMPC5Tx.jpg', order: 3 },
+  { id: 'p16', categoryId: 'cat_photo', name: '5R Photo', price: 18.00, unit: 'pc', imageUrl: 'https://iili.io/nMPCApj.jpg', order: 4 },
+  { id: 'p17', categoryId: 'cat_photo', name: '4R Photo', price: 16.00, unit: 'pc', imageUrl: 'https://iili.io/nMPCoE7.jpg', order: 5 },
+  { id: 'p18', categoryId: 'cat_photo', name: '3R Photo', price: 11.00, unit: 'pc', imageUrl: 'https://iili.io/nMPCx49.jpg', order: 6 },
+  { id: 'p19', categoryId: 'cat_photo', name: '2R / Wallet Size', price: 8.00, unit: 'pc', imageUrl: 'https://iili.io/nMPCTYu.jpg', order: 7 },
+  { id: 'p50', categoryId: 'cat_photo', name: '115gsm (1/4 Page)', price: 15.00, unit: 'page', imageUrl: 'https://iili.io/nMiidnp.jpg', order: 8 },
+  { id: 'p51', categoryId: 'cat_photo', name: '115gsm (Half Page)', price: 20.00, unit: 'page', imageUrl: 'https://iili.io/nMiPyAJ.jpg', order: 9 },
+  { id: 'p52', categoryId: 'cat_photo', name: '115gsm (Full Page)', price: 25.00, unit: 'page', imageUrl: 'https://iili.io/nMii9wv.jpg', order: 10 },
+  { id: 'p20', categoryId: 'cat_photo', name: 'Instax Mini 4pcs', price: 30.00, unit: 'set', imageUrl: 'https://iili.io/nMsqDlt.jpg', order: 11 },
+  { id: 'p21', categoryId: 'cat_photo', name: 'Instax Mini 10pcs', price: 55.00, unit: 'set', imageUrl: 'https://iili.io/nMsqtfI.jpg', order: 12 },
+  { id: 'p22', categoryId: 'cat_photo', name: 'Instax Mini 20pcs', price: 95.00, unit: 'set', imageUrl: 'https://iili.io/nMsqQiN.jpg', order: 13 },
+  { id: 'p23', categoryId: 'cat_photo', name: '3-Grid Photo Strip 2pcs', price: 20.00, unit: 'set', imageUrl: 'https://iili.io/nMszHMv.jpg', order: 14 },
   { id: 'p24', categoryId: 'cat_lam', name: 'ID 250mic', price: 45.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 1 },
   { id: 'p25', categoryId: 'cat_lam', name: 'ID 125mic', price: 35.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 2 },
   { id: 'p26', categoryId: 'cat_lam', name: 'ID 250mic - Print+Laminate', price: 55.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 3 },
@@ -87,16 +91,16 @@ const DEFAULT_PRODUCTS = [
   { id: 'p37', categoryId: 'cat_lam', name: 'A4 125mic', price: 60.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 14 },
   { id: 'p38', categoryId: 'cat_lam', name: 'A4 250mic - Print+Laminate', price: 85.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 15 },
   { id: 'p39', categoryId: 'cat_lam', name: 'A4 125mic - Print+Laminate', price: 75.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 16 },
-  { id: 'p40', categoryId: 'cat_rush', name: 'Package A', price: 40.00, unit: 'set', imageUrl: '', order: 1 },
-  { id: 'p41', categoryId: 'cat_rush', name: 'Package B', price: 40.00, unit: 'set', imageUrl: '', order: 2 },
-  { id: 'p42', categoryId: 'cat_rush', name: 'Package C', price: 40.00, unit: 'set', imageUrl: '', order: 3 },
-  { id: 'p43', categoryId: 'cat_rush', name: 'Package D', price: 45.00, unit: 'set', imageUrl: '', order: 4 },
-  { id: 'p44', categoryId: 'cat_rush', name: 'Package E', price: 55.00, unit: 'set', imageUrl: '', order: 5 },
-  { id: 'p45', categoryId: 'cat_oth', name: 'Sticker Print - 1/4', price: 25.00, unit: 'page', imageUrl: '', order: 1 },
-  { id: 'p46', categoryId: 'cat_oth', name: 'Sticker Print - Half', price: 35.00, unit: 'page', imageUrl: '', order: 2 },
-  { id: 'p47', categoryId: 'cat_oth', name: 'Sticker Print - Full', price: 60.00, unit: 'page', imageUrl: '', order: 3 },
-  { id: 'p48', categoryId: 'cat_oth', name: 'Sintra - Flat', price: 135.00, unit: 'pc', imageUrl: '', order: 4 },
-  { id: 'p49', categoryId: 'cat_oth', name: 'Sintra - 3D Box', price: 200.00, unit: 'pc', imageUrl: '', order: 5 },
+  { id: 'p40', categoryId: 'cat_rush', name: 'Package A', price: 40.00, unit: 'set', imageUrl: 'https://iili.io/nM637tt.jpg', order: 1 },
+  { id: 'p41', categoryId: 'cat_rush', name: 'Package B', price: 40.00, unit: 'set', imageUrl: 'https://iili.io/nM635NI.jpg', order: 2 },
+  { id: 'p42', categoryId: 'cat_rush', name: 'Package C', price: 40.00, unit: 'set', imageUrl: 'https://iili.io/nM63aoX.jpg', order: 3 },
+  { id: 'p43', categoryId: 'cat_rush', name: 'Package D', price: 45.00, unit: 'set', imageUrl: 'https://iili.io/nM635NI.jpg', order: 4 },
+  { id: 'p44', categoryId: 'cat_rush', name: 'Package E', price: 55.00, unit: 'set', imageUrl: 'https://iili.io/nM63cVn.jpg', order: 5 },
+  { id: 'p45', categoryId: 'cat_oth', name: 'Sticker Print - 1/4', price: 25.00, unit: 'page', imageUrl: 'https://iili.io/nMiPtF1.jpg', order: 1 },
+  { id: 'p46', categoryId: 'cat_oth', name: 'Sticker Print - Half', price: 35.00, unit: 'page', imageUrl: 'https://iili.io/nMiPDcF.jpg', order: 2 },
+  { id: 'p47', categoryId: 'cat_oth', name: 'Sticker Print - Full', price: 60.00, unit: 'page', imageUrl: 'https://iili.io/nMiPp9a.jpg', order: 3 },
+  { id: 'p48', categoryId: 'cat_oth', name: 'Sintra - Flat', price: 135.00, unit: 'pc', imageUrl: 'https://iili.io/nM67Tut.jpg', order: 4 },
+  { id: 'p49', categoryId: 'cat_oth', name: 'Sintra - 3D Box', price: 200.00, unit: 'pc', imageUrl: 'https://iili.io/nM67uwX.jpg', order: 5 },
 ];
 
 // Returns a component whose identity never changes between renders, but which always runs
@@ -281,6 +285,7 @@ export default function InksurgePOS() {
   const [orderToDelete, setOrderToDelete] = useState(null);
   const [viewingOrder, setViewingOrder] = useState(null);
   const receiptRef = useRef(null);
+  const catalogSyncStarted = useRef(false); // the one-time catalog update runs at most once per visit
   const [processingReceipt, setProcessingReceipt] = useState(null); // 'download' | 'share' | null
   const [receiptNotice, setReceiptNotice] = useState('');
 
@@ -444,12 +449,25 @@ export default function InksurgePOS() {
     const unsubProd = onSnapshot(query(prodRef), (snapshot) => {
       if (snapshot.empty) {
         DEFAULT_PRODUCTS.forEach(prod => setDoc(doc(prodRef, prod.id), prod));
+        // A brand-new shop already starts on the current catalog, so no catalog update is needed
+        setDoc(doc(db, 'artifacts', appId, 'shop', 'main'), { catalogVersion: CATALOG_VERSION }, { merge: true });
       } else {
-        const prods = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => {
+        const liveProducts = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        const prods = [...liveProducts].sort((a, b) => {
           const catDiff = (CATEGORY_ORDER_MAP[a.categoryId] ?? 999) - (CATEGORY_ORDER_MAP[b.categoryId] ?? 999);
           return catDiff !== 0 ? catDiff : (a.order || 0) - (b.order || 0);
         });
         setProducts(prods);
+
+        // Bring an existing shop up to the current catalog (new pictures + new services) exactly once.
+        // It only changes pictures and adds missing new services; prices, names and your own order are kept.
+        if (!catalogSyncStarted.current) {
+          catalogSyncStarted.current = true;
+          runCatalogMigration({
+            firestore: { doc, collection, getDoc, writeBatch },
+            db, appId, liveProducts, catalog: DEFAULT_PRODUCTS,
+          }).catch(err => console.warn("Catalog update will be retried next time:", err));
+        }
       }
     }, (err) => console.warn("Firestore products fallback:", err));
 
