@@ -11,6 +11,7 @@ import Papa from 'papaparse';
 import html2canvas from 'html2canvas';
 import { buildReceipt, getManualCharge, formatPeso } from './receipt.js';
 import { CATALOG_VERSION, runCatalogMigration } from './catalogSync.js';
+import { blankProductForm, formFromProduct, buildProductChanges, buildNewProduct } from './productForm.js';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -75,22 +76,22 @@ const DEFAULT_PRODUCTS = [
   { id: 'p21', categoryId: 'cat_photo', name: 'Instax Mini 10pcs', price: 55.00, unit: 'set', imageUrl: 'https://i.imgur.com/UGJHYI3.jpeg', order: 12 },
   { id: 'p22', categoryId: 'cat_photo', name: 'Instax Mini 20pcs', price: 95.00, unit: 'set', imageUrl: 'https://i.imgur.com/vmlMZFq.jpeg', order: 13 },
   { id: 'p23', categoryId: 'cat_photo', name: '3-Grid Photo Strip 2pcs', price: 20.00, unit: 'set', imageUrl: 'https://i.imgur.com/aACyxTU.jpeg', order: 14 },
-  { id: 'p24', categoryId: 'cat_lam', name: 'ID 250mic', price: 45.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 1 },
-  { id: 'p25', categoryId: 'cat_lam', name: 'ID 125mic', price: 35.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 2 },
-  { id: 'p26', categoryId: 'cat_lam', name: 'ID 250mic - Print+Laminate', price: 55.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 3 },
-  { id: 'p27', categoryId: 'cat_lam', name: 'ID 125mic - Print+Laminate', price: 45.00, unit: 'pc', imageUrl: 'https://www.printyourdesign.com.ph/supplier_product/s/display_image/98/710/408/laminated_ID.jpg?0', order: 4 },
-  { id: 'p28', categoryId: 'cat_lam', name: 'A6 250mic', price: 50.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S8df17eaf802b490b80472358de5f55032.jpg', order: 5 },
-  { id: 'p29', categoryId: 'cat_lam', name: 'A6 125mic', price: 40.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S8df17eaf802b490b80472358de5f55032.jpg', order: 6 },
-  { id: 'p30', categoryId: 'cat_lam', name: 'A6 250mic - Print+Laminate', price: 65.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S8df17eaf802b490b80472358de5f55032.jpg', order: 7 },
-  { id: 'p31', categoryId: 'cat_lam', name: 'A6 125mic - Print+Laminate', price: 55.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S8df17eaf802b490b80472358de5f55032.jpg', order: 8 },
-  { id: 'p32', categoryId: 'cat_lam', name: 'A5 250mic', price: 58.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S1c23cadc729047a0944baf43033cf62c3.jpg', order: 9 },
-  { id: 'p33', categoryId: 'cat_lam', name: 'A5 125mic', price: 48.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S1c23cadc729047a0944baf43033cf62c3.jpg', order: 10 },
-  { id: 'p34', categoryId: 'cat_lam', name: 'A5 250mic - Print+Laminate', price: 73.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S1c23cadc729047a0944baf43033cf62c3.jpg', order: 11 },
-  { id: 'p35', categoryId: 'cat_lam', name: 'A5 125mic - Print + Laminate', price: 63.00, unit: 'pc', imageUrl: 'https://ae-pic-a1.aliexpress-media.com/kf/S1c23cadc729047a0944baf43033cf62c3.jpg', order: 12 },
-  { id: 'p36', categoryId: 'cat_lam', name: 'A4 250mic', price: 70.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 13 },
-  { id: 'p37', categoryId: 'cat_lam', name: 'A4 125mic', price: 60.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 14 },
-  { id: 'p38', categoryId: 'cat_lam', name: 'A4 250mic - Print+Laminate', price: 85.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 15 },
-  { id: 'p39', categoryId: 'cat_lam', name: 'A4 125mic - Print+Laminate', price: 75.00, unit: 'pc', imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTgaFZrvtwZFfSbc27va0DzvA7VmSlE7-qId1MdXHEAaXdvazfnKAZ3X2n8&s=10', order: 16 },
+  { id: 'p24', categoryId: 'cat_lam', name: 'ID 250mic', price: 45.00, unit: 'pc', imageUrl: 'https://i.imgur.com/mvaoUp2.jpeg', order: 1 },
+  { id: 'p25', categoryId: 'cat_lam', name: 'ID 125mic', price: 35.00, unit: 'pc', imageUrl: 'https://i.imgur.com/eFRPybf.jpeg', order: 2 },
+  { id: 'p26', categoryId: 'cat_lam', name: 'ID 250mic - Print+Laminate', price: 55.00, unit: 'pc', imageUrl: 'https://i.imgur.com/xYlBMeV.jpeg', order: 3 },
+  { id: 'p27', categoryId: 'cat_lam', name: 'ID 125mic - Print+Laminate', price: 45.00, unit: 'pc', imageUrl: 'https://i.imgur.com/EPFM4u3.jpeg', order: 4 },
+  { id: 'p28', categoryId: 'cat_lam', name: 'A6 250mic', price: 50.00, unit: 'pc', imageUrl: 'https://i.imgur.com/iQPFmkg.jpeg', order: 5 },
+  { id: 'p29', categoryId: 'cat_lam', name: 'A6 125mic', price: 40.00, unit: 'pc', imageUrl: 'https://i.imgur.com/B2UQFkI.jpeg', order: 6 },
+  { id: 'p30', categoryId: 'cat_lam', name: 'A6 250mic - Print+Laminate', price: 65.00, unit: 'pc', imageUrl: 'https://i.imgur.com/FYTaDZ9.jpeg', order: 7 },
+  { id: 'p31', categoryId: 'cat_lam', name: 'A6 125mic - Print+Laminate', price: 55.00, unit: 'pc', imageUrl: 'https://i.imgur.com/Hf8oVre.jpeg', order: 8 },
+  { id: 'p32', categoryId: 'cat_lam', name: 'A5 250mic', price: 58.00, unit: 'pc', imageUrl: 'https://i.imgur.com/FHFob5G.jpeg', order: 9 },
+  { id: 'p33', categoryId: 'cat_lam', name: 'A5 125mic', price: 48.00, unit: 'pc', imageUrl: 'https://i.imgur.com/c8XvicF.jpeg', order: 10 },
+  { id: 'p34', categoryId: 'cat_lam', name: 'A5 250mic - Print+Laminate', price: 73.00, unit: 'pc', imageUrl: 'https://i.imgur.com/9psdOW2.jpeg', order: 11 },
+  { id: 'p35', categoryId: 'cat_lam', name: 'A5 125mic - Print + Laminate', price: 63.00, unit: 'pc', imageUrl: 'https://i.imgur.com/VUu0uvT.jpeg', order: 12 },
+  { id: 'p36', categoryId: 'cat_lam', name: 'A4 250mic', price: 70.00, unit: 'pc', imageUrl: 'https://i.imgur.com/qN4GMJw.jpeg', order: 13 },
+  { id: 'p37', categoryId: 'cat_lam', name: 'A4 125mic', price: 60.00, unit: 'pc', imageUrl: 'https://i.imgur.com/k3hJ4vq.jpeg', order: 14 },
+  { id: 'p38', categoryId: 'cat_lam', name: 'A4 250mic - Print+Laminate', price: 85.00, unit: 'pc', imageUrl: 'https://i.imgur.com/4X9Aq7E.jpeg', order: 15 },
+  { id: 'p39', categoryId: 'cat_lam', name: 'A4 125mic - Print+Laminate', price: 75.00, unit: 'pc', imageUrl: 'https://i.imgur.com/HyRsfY2.jpeg', order: 16 },
   { id: 'p40', categoryId: 'cat_rush', name: 'Package A', price: 40.00, unit: 'set', imageUrl: 'https://i.imgur.com/B9o1kYA.jpeg', order: 1 },
   { id: 'p41', categoryId: 'cat_rush', name: 'Package B', price: 40.00, unit: 'set', imageUrl: 'https://i.imgur.com/39QU8x4.jpeg', order: 2 },
   { id: 'p42', categoryId: 'cat_rush', name: 'Package C', price: 40.00, unit: 'set', imageUrl: 'https://i.imgur.com/HjQTeYY.jpeg', order: 3 },
@@ -127,6 +128,27 @@ function BrandLogo({ logoUrl, size = 40, iconSize = 20, rounded = 'rounded-xl', 
         <Printer size={iconSize} className="text-white" />
       )}
     </div>
+  );
+}
+
+// Picture of a service. If the address is empty, wrong, blocked, or the image can't be loaded, the
+// `fallback` (an icon) is shown instead of a broken-image box with its text spilling out, so the
+// screen keeps its layout. The picture is cropped ('cover') or fitted ('contain') inside a fixed
+// square box - never stretched. No-referrer avoids image hosts that refuse links from other sites.
+function ItemImage({ src, alt, fit = 'cover', fallback = null }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setFailed(false); }, [src]);        // a new address gets a fresh try
+  if (!src || failed) return fallback;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      className={`w-full h-full ${fit === 'contain' ? 'object-contain' : 'object-cover'}`}
+    />
   );
 }
 
@@ -519,6 +541,14 @@ export default function InksurgePOS() {
 
   const generateLineId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
+  // Picture for a line in the Current Order: always the service's CURRENT picture from the catalog,
+  // so updated pictures show up even for lines added earlier or loaded from a saved order.
+  // (Only if the service no longer exists does the copy saved with the line get used.)
+  const getLiveItemImage = (item) => {
+    const p = products.find(x => x.id === item.productId);
+    return p ? (p.imageUrl || '') : (item.imageUrl || '');
+  };
+
   const addToCart = (product, forceLong = false) => {
     setCart(prev => {
       const isDocOrCopy = product.categoryId === 'cat_doc' || product.categoryId === 'cat_copy';
@@ -781,6 +811,10 @@ export default function InksurgePOS() {
 
   settingsRenderRef.current = () => {
     const [editProd, setEditProd] = useState(null);
+    const [prodForm, setProdForm] = useState(() => blankProductForm(categories));   // what the Add/Edit form shows
+    const [prodSaving, setProdSaving] = useState(false);
+    const [prodMsg, setProdMsg] = useState(null);                                    // { type: 'error' | 'success', text }
+    const prodFormRef = useRef(null);
     const [editCat, setEditCat] = useState(null);
     const [activeSettingsTab, setActiveSettingsTab] = useState('services'); // 'services' | 'categories' | 'payments' | 'appearance'
 
@@ -941,37 +975,66 @@ export default function InksurgePOS() {
 
     const brandingDirty = draftSystemName !== systemName || draftLogoUrl !== logoUrl;
 
-    // Save Product Handler
+    // ---- Add / Edit Service form ----
+    const setProdField = (field, value) => setProdForm(f => ({ ...f, [field]: value }));
+
+    const scrollToProdForm = () => {
+      const el = prodFormRef.current;
+      if (!el) return;
+      const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    };
+
+    // Edit: load the item's LATEST saved values into every field, then bring the form into view
+    const startEditProduct = (p) => {
+      const latest = products.find(x => x.id === p.id) || p;
+      setEditProd(latest);
+      setProdForm(formFromProduct(latest, categories));
+      setProdMsg(null);
+      requestAnimationFrame(scrollToProdForm);
+    };
+
+    const cancelEditProduct = () => {
+      setEditProd(null);
+      setProdForm(blankProductForm(categories));
+      setProdMsg(null);
+    };
+
     const handleSaveProduct = async (e) => {
       e.preventDefault();
-      const formData = new FormData(e.target);
-      const prodData = {
-        name: formData.get('name'),
-        price: parseFloat(formData.get('price')) || 0,
-        categoryId: formData.get('categoryId'),
-        unit: formData.get('unit') || 'page',
-        imageUrl: formData.get('imageUrl') || '',
-        order: editProd?.order || products.length + 1
-      };
+      if (prodSaving) return;
+      const isNew = !(editProd && editProd.id);
+      const built = isNew
+        ? buildNewProduct(prodForm, products)
+        : buildProductChanges(editProd, prodForm, products, categories);
+      if (!built.ok) { setProdMsg({ type: 'error', text: built.error }); return; }
 
-      if (db && user && user.uid !== 'demo_user') {
-        try {
-          if (editProd && editProd.id) {
-            await updateDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'products', editProd.id), prodData);
-          } else {
-            await addDoc(collection(db, 'artifacts', appId, 'shop', 'main', 'products'), prodData);
-          }
-        } catch (err) {
-          console.error("Error saving service:", err);
-        }
-      } else {
-        if (editProd && editProd.id) {
-          setProducts(prev => prev.map(p => p.id === editProd.id ? { ...p, ...prodData } : p));
-        } else {
-          setProducts(prev => [...prev, { ...prodData, id: 'p_' + Date.now() }]);
-        }
+      if (!isNew && built.isEmpty) {                       // nothing was changed
+        cancelEditProduct();
+        setProdMsg({ type: 'success', text: 'No changes to save.' });
+        return;
       }
-      setEditProd(null);
+
+      setProdSaving(true);
+      try {
+        if (hasDb()) {
+          if (isNew) await addDoc(collection(db, 'artifacts', appId, 'shop', 'main', 'products'), built.product);
+          else await updateDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'products', editProd.id), built.changes);
+        } else if (isNew) {
+          setProducts(prev => [...prev, { ...built.product, id: 'p_' + Date.now() }]);
+        } else {
+          setProducts(prev => prev.map(p => p.id === editProd.id ? { ...p, ...built.changes } : p));
+        }
+        setEditProd(null);
+        setProdForm(blankProductForm(categories));
+        setProdMsg({ type: 'success', text: isNew ? 'Service added.' : 'Service updated.' });
+        setTimeout(() => setProdMsg(m => (m && m.type === 'success' ? null : m)), 3500);
+      } catch (err) {
+        console.error("Error saving service:", err);
+        setProdMsg({ type: 'error', text: "Couldn't save the service. Check your connection and try again - your changes are still in the form." });
+      } finally {
+        setProdSaving(false);
+      }
     };
 
     // Save Category Handler
@@ -1006,6 +1069,7 @@ export default function InksurgePOS() {
 
     // Delete Product
     const handleDeleteProduct = async (id) => {
+      if (editProd && editProd.id === id) cancelEditProduct();
       if (db && user && user.uid !== 'demo_user') {
         try {
           await deleteDoc(doc(db, 'artifacts', appId, 'shop', 'main', 'products', id));
@@ -1115,7 +1179,7 @@ export default function InksurgePOS() {
           ₱{Number(p.price).toFixed(2)} <span className="text-slate-400 dark:text-slate-400 font-normal text-xs">/ {p.unit}</span>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <button onClick={() => setEditProd(p)} className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 rounded-lg transition-colors" title="Edit">
+          <button onClick={() => startEditProduct(p)} className="p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 rounded-lg transition-colors" title="Edit">
             <Edit size={16}/>
           </button>
           <button onClick={() => handleDeleteProduct(p.id)} className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Delete">
@@ -1174,7 +1238,7 @@ export default function InksurgePOS() {
           {activeSettingsTab === 'services' ? (
             <>
               {/* Product Add / Edit Form */}
-              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 mb-8">
+              <div ref={prodFormRef} className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 mb-8 scroll-mt-8">
                 <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center">
                   <span className="w-2 h-2 rounded-full bg-blue-600 mr-2"></span>
                   {editProd ? 'Edit Service' : 'Add New Printing Service'}
@@ -1184,7 +1248,8 @@ export default function InksurgePOS() {
                     <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Service Title (use \n for newline)</label>
                     <input 
                       name="name" 
-                      defaultValue={editProd?.name} 
+                      value={prodForm.name}
+                      onChange={(e) => setProdField('name', e.target.value)}
                       required 
                       placeholder="e.g. Black & White\n(Text Only)"
                       className="w-full p-2.5 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
@@ -1194,9 +1259,13 @@ export default function InksurgePOS() {
                     <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Category</label>
                     <select 
                       name="categoryId" 
-                      defaultValue={editProd?.categoryId || categories[0]?.id} 
+                      value={prodForm.categoryId}
+                      onChange={(e) => setProdField('categoryId', e.target.value)}
                       className="w-full p-2.5 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                     >
+                      {prodForm.categoryId && !categories.some(c => c.id === prodForm.categoryId) && (
+                        <option value={prodForm.categoryId}>Unassigned</option>
+                      )}
                       {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
@@ -1206,7 +1275,9 @@ export default function InksurgePOS() {
                       name="price" 
                       type="number" 
                       step="0.01" 
-                      defaultValue={editProd?.price} 
+                      min="0"
+                      value={prodForm.price}
+                      onChange={(e) => setProdField('price', e.target.value)}
                       required 
                       placeholder="0.00"
                       className="w-full p-2.5 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
@@ -1216,7 +1287,8 @@ export default function InksurgePOS() {
                     <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Billing Unit (e.g., page, pc, set)</label>
                     <input 
                       name="unit" 
-                      defaultValue={editProd?.unit || 'page'} 
+                      value={prodForm.unit}
+                      onChange={(e) => setProdField('unit', e.target.value)}
                       required 
                       placeholder="page"
                       className="w-full p-2.5 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
@@ -1226,16 +1298,26 @@ export default function InksurgePOS() {
                     <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Image URL (Optional)</label>
                     <input 
                       name="imageUrl" 
-                      defaultValue={editProd?.imageUrl} 
+                      value={prodForm.imageUrl}
+                      onChange={(e) => setProdField('imageUrl', e.target.value)}
                       placeholder="https://images.unsplash.com/photo-..."
                       className="w-full p-2.5 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm" 
                     />
                   </div>
+                  {prodMsg && (
+                    <div role="status" aria-live="polite" className={`md:col-span-2 px-4 py-2.5 rounded-xl text-sm font-semibold border ${
+                      prodMsg.type === 'error'
+                        ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-200'
+                        : 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-200'
+                    }`}>
+                      {prodMsg.text}
+                    </div>
+                  )}
                   <div className="md:col-span-2 flex justify-end space-x-3 mt-2">
                     {editProd && (
                       <button 
                         type="button" 
-                        onClick={() => setEditProd(null)} 
+                        onClick={cancelEditProduct} 
                         className="px-5 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 dark:bg-slate-950 font-bold text-sm transition-colors"
                       >
                         Cancel
@@ -1243,9 +1325,10 @@ export default function InksurgePOS() {
                     )}
                     <button 
                       type="submit" 
-                      className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm shadow-md shadow-blue-200 transition-colors"
+                      disabled={prodSaving}
+                      className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm shadow-md shadow-blue-200 transition-colors"
                     >
-                      {editProd ? 'Update Service' : 'Add Service'}
+                      {prodSaving ? 'Saving...' : (editProd ? 'Update Service' : 'Add Service')}
                     </button>
                   </div>
                 </form>
@@ -2119,13 +2202,15 @@ export default function InksurgePOS() {
                   <div>
                     {/* Service Preview Icon or Custom Image - 1:1 Square Container */}
                     <div className="w-full aspect-square bg-slate-50 dark:bg-slate-900 rounded-xl mb-3 flex items-center justify-center border border-slate-100 dark:border-slate-800 overflow-hidden group-hover:bg-blue-50/50 transition-colors">
-                      {product.imageUrl ? (
-                        <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="text-slate-400 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex flex-col items-center">
-                          {getCategoryIcon(categories.find(c => c.id === product.categoryId)?.icon)}
-                        </div>
-                      )}
+                      <ItemImage
+                        src={product.imageUrl}
+                        alt={product.name}
+                        fallback={
+                          <div className="text-slate-400 dark:text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex flex-col items-center">
+                            {getCategoryIcon(categories.find(c => c.id === product.categoryId)?.icon)}
+                          </div>
+                        }
+                      />
                     </div>
 
                     {/* Service Title */}
@@ -2251,11 +2336,12 @@ export default function InksurgePOS() {
                     <div className="flex items-center gap-2.5 text-xs">
                       {/* Compact Item Square Image Thumbnail */}
                       <div className="w-9 h-9 aspect-square rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0 p-0.5">
-                        {item.imageUrl ? (
-                          <img src={item.imageUrl} alt={item.name} className="w-full h-full object-contain" />
-                        ) : (
-                          <ImageIcon className="text-slate-300 dark:text-slate-600" size={16} />
-                        )}
+                        <ItemImage
+                          src={getLiveItemImage(item)}
+                          alt={item.name}
+                          fit="contain"
+                          fallback={<ImageIcon className="text-slate-300 dark:text-slate-600" size={16} />}
+                        />
                       </div>
 
                       {/* Item Details */}
