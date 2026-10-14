@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { 
   Printer, Home, FileText, BarChart2, Settings, Search, Plus, Minus, 
   Trash2, Edit, CheckCircle, X, Image as ImageIcon, Copy, Camera, 
-  Layers, AlignJustify, Calendar, RefreshCw, ArrowUp, ArrowDown, User, DollarSign, Download, Upload, GripVertical, Share2
+  Layers, AlignJustify, Calendar, RefreshCw, ArrowUp, ArrowDown, User, DollarSign, Download, Upload, GripVertical, Share2, Wallet
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -12,6 +12,12 @@ import html2canvas from 'html2canvas';
 import { buildReceipt, getManualCharge, formatPeso } from './receipt.js';
 import { CATALOG_VERSION, runCatalogMigration } from './catalogSync.js';
 import { blankProductForm, formFromProduct, buildProductChanges, buildNewProduct } from './productForm.js';
+import {
+  CUSTOM_CATEGORY, blankExpenseForm, formFromExpense, buildNewExpense, buildExpenseUpdate,
+  filterExpenses, sortExpenses, summarizeExpenses, profitSummary, totalCents, expenseCents,
+  customCategories, allCategoryNames, suggestionsFor, todayKey, formatDateKey
+} from './expenses.js';
+import { subscribeExpenses, addExpense, updateExpense, deleteExpense } from './expensesDb.js';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -243,7 +249,7 @@ export default function InksurgePOS() {
   const [logoUrl, setLogoUrl] = useState(DEFAULT_LOGO_URL);
   
   // Navigation State
-  const [activeView, setActiveView] = useState('pos'); // pos, orders, reports, settings
+  const [activeView, setActiveView] = useState('pos'); // pos, orders, expenses, reports, settings
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile/tablet nav drawer
   const [cartOpen, setCartOpen] = useState(false); // mobile/tablet order bottom-sheet
   const [darkMode, setDarkMode] = useState(() => {
@@ -276,6 +282,7 @@ export default function InksurgePOS() {
   const [products, setProducts] = useState(DEFAULT_PRODUCTS);
   const [orders, setOrders] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState(DEFAULT_PAYMENT_METHODS);
+  const [expenses, setExpenses] = useState([]);
   
   // Cart & Order State
   const [cart, setCart] = useState([]);
@@ -518,6 +525,14 @@ export default function InksurgePOS() {
       }
     }, (err) => console.warn("Firestore payment methods fallback:", err));
 
+    // Subscribe to Expenses / OPEX (their own collection - never part of orders or sales)
+    const unsubExp = subscribeExpenses({
+      firestore: { collection, query, onSnapshot },
+      db, appId,
+      onData: setExpenses,
+      onError: (err) => console.warn("Firestore expenses fallback:", err),
+    });
+
     // Subscribe to Orders
     const unsubOrd = onSnapshot(query(ordRef), (snapshot) => {
       const ords = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => b.timestamp - a.timestamp);
@@ -529,6 +544,7 @@ export default function InksurgePOS() {
       if (unsubCat) unsubCat();
       if (unsubProd) unsubProd();
       if (unsubPm) unsubPm();
+      if (unsubExp) unsubExp();
       if (unsubOrd) unsubOrd();
     };
   }, [user]);
@@ -788,6 +804,8 @@ export default function InksurgePOS() {
   const SettingsView = useStableView(settingsRenderRef);
   const OrdersView = useStableView(ordersRenderRef);
   const ReportsView = useStableView(reportsRenderRef);
+  const expensesRenderRef = useRef(null);
+  const ExpensesView = useStableView(expensesRenderRef);
 
   const filteredProducts = products.filter(p => {
     const matchesCat = activeCategory ? p.categoryId === activeCategory : true;
@@ -815,6 +833,7 @@ export default function InksurgePOS() {
     const [prodSaving, setProdSaving] = useState(false);
     const [prodMsg, setProdMsg] = useState(null);                                    // { type: 'error' | 'success', text }
     const prodFormRef = useRef(null);
+    const prodMsgTimer = useRef(null);
     const [editCat, setEditCat] = useState(null);
     const [activeSettingsTab, setActiveSettingsTab] = useState('services'); // 'services' | 'categories' | 'payments' | 'appearance'
 
@@ -1028,7 +1047,8 @@ export default function InksurgePOS() {
         setEditProd(null);
         setProdForm(blankProductForm(categories));
         setProdMsg({ type: 'success', text: isNew ? 'Service added.' : 'Service updated.' });
-        setTimeout(() => setProdMsg(m => (m && m.type === 'success' ? null : m)), 3500);
+        clearTimeout(prodMsgTimer.current);
+        prodMsgTimer.current = setTimeout(() => setProdMsg(null), 3500);
       } catch (err) {
         console.error("Error saving service:", err);
         setProdMsg({ type: 'error', text: "Couldn't save the service. Check your connection and try again - your changes are still in the form." });
@@ -1705,6 +1725,15 @@ export default function InksurgePOS() {
 
     const rangeTotal = filteredOrders.reduce((sum, o) => sum + (o.total || 0), 0);
 
+    // Profit & Loss for the same selected period: Net Profit = Total Sales - Total Expenses.
+    // Sales are exactly the orders in the range above; expenses are counted once, by their expense date.
+    const profit = profitSummary({
+      salesCents: filteredOrders.reduce((sum, o) => sum + Math.round((Number(o.total) || 0) * 100), 0),
+      expenses, from: startDate, to: endDate,
+    });
+    const periodLabel = startDate && endDate ? `${formatDateKey(startDate)} - ${formatDateKey(endDate)}`
+      : startDate ? `From ${formatDateKey(startDate)}` : endDate ? `Up to ${formatDateKey(endDate)}` : 'All time';
+
     const handleDownloadCSV = () => {
       if (filteredOrders.length === 0) return;
       const headers = ["Order ID", "Date", "Time", "Customer Name", "Payment Method", "Items Purchased", "Subtotal (PHP)", "Additional Charge (PHP)", "Additional Charge Note", "Total Amount (PHP)"];
@@ -1951,6 +1980,32 @@ export default function InksurgePOS() {
             </div>
           </div>
 
+          {/* Profit & Loss for the selected period */}
+          <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 mb-8" data-testid="profit-loss">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">Profit & Loss</h3>
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400" data-testid="pl-period">{periodLabel}</span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-xl border-l-4 border-blue-500 border-y border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Sales</p>
+                <p className="text-2xl font-black text-slate-800 dark:text-slate-100 mt-1 break-words" data-testid="pl-sales">{formatPeso(profit.salesCents)}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{filteredOrders.length} sale{filteredOrders.length === 1 ? '' : 's'}</p>
+              </div>
+              <div className="p-4 rounded-xl border-l-4 border-red-500 border-y border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Expenses</p>
+                <p className="text-2xl font-black text-red-600 dark:text-red-400 mt-1 break-words" data-testid="pl-expenses">{formatPeso(profit.expensesCents)}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{profit.expenseCount} expense{profit.expenseCount === 1 ? '' : 's'}</p>
+              </div>
+              <div className={`p-4 rounded-xl border-l-4 border-y border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 ${profit.netCents < 0 ? 'border-l-red-500' : 'border-l-emerald-500'}`}>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Net Profit</p>
+                <p className={`text-2xl font-black mt-1 break-words ${profit.netCents < 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`} data-testid="pl-net">{formatPeso(profit.netCents)}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{profit.netCents < 0 ? 'Expenses are higher than sales' : 'Sales minus expenses'}</p>
+              </div>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-4">Net Profit = Total Sales − Total Expenses. Expenses are counted once, in the period of their expense date.</p>
+          </div>
+
           {/* Detailed History Table with Download CSV Button */}
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
             <div className="p-5 border-b bg-slate-50 dark:bg-slate-900 flex flex-wrap justify-between items-center gap-2">
@@ -2041,6 +2096,366 @@ export default function InksurgePOS() {
             )}
           </div>
         </div>
+      </div>
+    );
+  };
+
+  // ---------------------------------------------------------------------------------------------
+  // Expenses / OPEX: a record of what the business spends. Completely separate from orders/sales.
+  // ---------------------------------------------------------------------------------------------
+  expensesRenderRef.current = () => {
+    const [form, setForm] = useState(() => blankExpenseForm({ paymentMethodId: defaultPaymentMethodId }));
+    const [editingId, setEditingId] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [msg, setMsg] = useState(null);                         // { type: 'error' | 'success', text }
+    const [search, setSearch] = useState('');
+    const [fromDate, setFromDate] = useState('');
+    const [toDate, setToDate] = useState('');
+    const [catFilter, setCatFilter] = useState('all');
+    const [toDelete, setToDelete] = useState(null);
+    const [deleting, setDeleting] = useState(false);
+    const formRef = useRef(null);
+    const msgTimer = useRef(null);                            // one timer: an older message can never clear a newer one
+
+    const nowKey = todayKey();
+    const hasExpenseDb = () => db && user && user.uid !== 'demo_user';
+    const firestoreApi = () => ({ collection, query, onSnapshot, addDoc, doc, updateDoc, deleteDoc });   // only built when the database is actually used
+
+    const customNames = customCategories(expenses);
+    const categoryNames = allCategoryNames(expenses);
+    const paymentLabelOf = (e) => {
+      const m = e.paymentMethodId ? paymentMethods.find(x => x.id === e.paymentMethodId) : null;
+      return m ? m.name : (e.paymentMethodName || '');
+    };
+
+    // Dropdown choices: the active payment methods, plus the one an edited expense already uses even if it was deactivated/removed
+    const selectedPaymentId = form.paymentMethodId || defaultPaymentMethodId;
+    const paymentChoices = activePaymentMethods.map(m => ({ id: m.id, label: m.name }));
+    if (selectedPaymentId && !paymentChoices.some(o => o.id === selectedPaymentId)) {
+      const m = paymentMethods.find(x => x.id === selectedPaymentId);
+      paymentChoices.push({ id: selectedPaymentId, label: m ? `${m.name} (inactive)` : `${form.paymentMethodName || 'Unknown'} (removed)` });
+    }
+    const categoryChoices = (form.category === CUSTOM_CATEGORY || categoryNames.includes(form.category)) ? categoryNames : [...categoryNames, form.category];
+
+    // Totals
+    const summary = summarizeExpenses(expenses, nowKey);
+    const filtered = sortExpenses(filterExpenses(expenses, { search, from: fromDate, to: toDate, category: catFilter, paymentLabel: paymentLabelOf }));
+    const filteredTotal = totalCents(filtered);
+    const filtersActive = !!(search.trim() || fromDate || toDate || catFilter !== 'all');
+    const rangeInverted = !!(fromDate && toDate && fromDate > toDate);
+
+    const setField = (field, value) => setForm(f => ({ ...f, [field]: value }));
+    const resetForm = () => { setEditingId(null); setForm(blankExpenseForm({ paymentMethodId: defaultPaymentMethodId })); };
+    const flash = (type, text) => {
+      clearTimeout(msgTimer.current);
+      setMsg({ type, text });
+      if (type === 'success') msgTimer.current = setTimeout(() => setMsg(null), 3500);
+    };
+
+    const scrollToForm = () => {
+      const el = formRef.current;
+      if (!el) return;
+      const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+    };
+
+    // Edit: load the expense's LATEST saved values into every field and bring the form into view
+    const startEdit = (e) => {
+      const latest = expenses.find(x => x.id === e.id) || e;
+      setEditingId(latest.id);
+      setForm(formFromExpense(latest));
+      setMsg(null);
+      requestAnimationFrame(scrollToForm);
+    };
+
+    const handleSubmit = async (ev) => {
+      ev.preventDefault();
+      if (saving) return;
+      const isEdit = !!editingId;
+      const ctx = { paymentMethods, knownCategories: customNames };
+      const values = { ...form, paymentMethodId: selectedPaymentId };
+      const built = isEdit ? buildExpenseUpdate(values, ctx) : buildNewExpense(values, ctx);
+      if (!built.ok) { setMsg({ type: 'error', text: built.error }); return; }
+
+      setSaving(true);
+      try {
+        if (hasExpenseDb()) {
+          if (isEdit) await updateExpense({ firestore: firestoreApi(), db, appId, id: editingId, changes: built.changes });
+          else await addExpense({ firestore: firestoreApi(), db, appId, expense: built.expense });
+        } else if (isEdit) {
+          setExpenses(prev => prev.map(x => x.id === editingId ? { ...x, ...built.changes } : x));
+        } else {
+          setExpenses(prev => [...prev, { ...built.expense, id: 'e_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7) }]);
+        }
+        resetForm();
+        flash('success', isEdit ? 'Expense updated.' : 'Expense added.');
+      } catch (err) {
+        console.error("Error saving expense:", err);
+        setMsg({ type: 'error', text: "Couldn't save the expense. Check your connection and try again - your entries are still in the form." });
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    const confirmDelete = async () => {
+      if (!toDelete || deleting) return;
+      setDeleting(true);
+      try {
+        if (hasExpenseDb()) await deleteExpense({ firestore: firestoreApi(), db, appId, id: toDelete.id });
+        else setExpenses(prev => prev.filter(x => x.id !== toDelete.id));
+        if (editingId === toDelete.id) resetForm();
+        setToDelete(null);
+        flash('success', 'Expense deleted.');
+      } catch (err) {
+        console.error("Error deleting expense:", err);
+        setToDelete(null);
+        setMsg({ type: 'error', text: "Couldn't delete the expense. Please try again." });
+      } finally {
+        setDeleting(false);
+      }
+    };
+
+    const clearFilters = () => { setSearch(''); setFromDate(''); setToDate(''); setCatFilter('all'); };
+    const peso = (cents) => formatPeso(cents);
+    const RED = 'text-red-600 dark:text-red-400';                 // every expense amount and total
+    const fieldCls = 'w-full p-2.5 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm';
+    const labelCls = 'block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1';
+    const iconBtn = 'p-2 rounded-lg transition-colors';
+
+    const summaryCards = [
+      ['today', 'Today', summary.today], ['yesterday', 'Yesterday', summary.yesterday], ['week', 'This Week', summary.week],
+      ['month', 'This Month', summary.month], ['year', 'This Year', summary.year],
+    ];
+
+    return (
+      <div className="p-8 h-full overflow-y-auto bg-slate-50 dark:bg-slate-900">
+        <div className="max-w-6xl mx-auto">
+          <div className="mb-6">
+            <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100">Expenses / OPEX</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Track supplies, maintenance, utilities and every other business expense</p>
+          </div>
+
+          {/* Totals: today / yesterday / this week / this month / this year */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            {summaryCards.map(([key, label, cents]) => (
+              <div key={key} data-testid={`exp-${key}`} className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border-l-4 border-red-500 border-y border-r border-slate-200 dark:border-slate-700">
+                <p className="text-xs font-bold text-slate-400 dark:text-slate-400 uppercase tracking-wider">{label}</p>
+                <p className={`text-2xl font-black mt-2 break-words ${RED}`}>{peso(cents)}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Add / Edit Expense */}
+          <div ref={formRef} className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 mb-8 scroll-mt-8">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center">
+              {editingId ? <><span className="w-2 h-2 rounded-full bg-blue-600 mr-2"></span> Edit Expense</> : 'Add Expense'}
+            </h3>
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Date</label>
+                <input type="date" name="date" value={form.date} onChange={(e) => setField('date', e.target.value)} required className={fieldCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Category</label>
+                <select name="category" value={form.category} onChange={(e) => setField('category', e.target.value)} className={fieldCls}>
+                  {categoryChoices.map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value={CUSTOM_CATEGORY}>+ Add custom category...</option>
+                </select>
+              </div>
+              {form.category === CUSTOM_CATEGORY && (
+                <div className="md:col-span-2">
+                  <label className={labelCls}>New Category Name</label>
+                  <input type="text" name="customCategory" value={form.customCategory} onChange={(e) => setField('customCategory', e.target.value)} maxLength={40} placeholder="e.g. Delivery, Staff Meals, Packaging" className={fieldCls} />
+                </div>
+              )}
+              <div>
+                <label className={labelCls}>Description / Item Name</label>
+                <input type="text" name="description" list="expense-suggestions" value={form.description} onChange={(e) => setField('description', e.target.value)} maxLength={80} placeholder="e.g. Bond paper, Printer repair, Electricity bill" required className={fieldCls} />
+                <datalist id="expense-suggestions">
+                  {suggestionsFor(form.category).map(s => <option key={s} value={s} />)}
+                </datalist>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Quantity (optional)</label>
+                  <input type="number" name="quantity" value={form.quantity} onChange={(e) => setField('quantity', e.target.value)} min="0" step="any" placeholder="e.g. 5" className={fieldCls} />
+                </div>
+                <div>
+                  <label className={labelCls}>Amount (₱)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-400 text-sm font-bold pointer-events-none">₱</span>
+                    <input type="number" name="amount" value={form.amount} onChange={(e) => setField('amount', e.target.value)} min="0.01" step="0.01" placeholder="0.00" required className={`${fieldCls} pl-7`} />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Payment Method</label>
+                <select name="paymentMethodId" value={selectedPaymentId} onChange={(e) => setField('paymentMethodId', e.target.value)} className={fieldCls}>
+                  {paymentChoices.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Notes (optional)</label>
+                <textarea name="notes" rows="1" value={form.notes} onChange={(e) => setField('notes', e.target.value)} maxLength={300} placeholder="Anything worth remembering" className={`${fieldCls} resize-y`} />
+              </div>
+              {msg && (
+                <div role="status" aria-live="polite" className={`md:col-span-2 px-4 py-2.5 rounded-xl text-sm font-semibold border ${
+                  msg.type === 'error'
+                    ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-200'
+                    : 'bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-200'
+                }`}>
+                  {msg.text}
+                </div>
+              )}
+              <div className="md:col-span-2 flex justify-end space-x-3 mt-1">
+                {editingId && (
+                  <button type="button" onClick={() => { resetForm(); setMsg(null); }} className="px-5 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 font-bold rounded-xl text-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                    Cancel
+                  </button>
+                )}
+                <button type="submit" disabled={saving} className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold rounded-xl text-sm shadow-md shadow-blue-200 transition-colors">
+                  {saving ? 'Saving...' : (editingId ? 'Update Expense' : 'Add Expense')}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Records: search + filters + totals + table */}
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-slate-800 dark:text-slate-100">Expense Records</h3>
+                {filtersActive && (
+                  <button type="button" onClick={clearFilters} title="Clear filters" className="px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors border border-slate-200 dark:border-slate-600 flex items-center">
+                    <RefreshCw size={14} className="mr-1"/> Clear filters
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 lg:grid-cols-12 gap-3 items-end">
+                <div className="col-span-2 lg:col-span-4">
+                  <label className={labelCls}>Search</label>
+                  <div className="relative">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-400 pointer-events-none" />
+                    <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search expenses..." className={`${fieldCls} pl-9`} />
+                  </div>
+                </div>
+                <div className="lg:col-span-2">
+                  <label className={labelCls}>From</label>
+                  <input type="date" aria-label="From date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className={fieldCls} />
+                </div>
+                <div className="lg:col-span-2">
+                  <label className={labelCls}>To</label>
+                  <input type="date" aria-label="To date" value={toDate} onChange={(e) => setToDate(e.target.value)} className={fieldCls} />
+                </div>
+                <div className="col-span-2 lg:col-span-4">
+                  <label className={labelCls}>Category</label>
+                  <select aria-label="Filter by category" value={catFilter} onChange={(e) => setCatFilter(e.target.value)} className={fieldCls}>
+                    <option value="all">All Categories</option>
+                    {categoryNames.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              {rangeInverted && <p className="text-xs font-semibold text-amber-700 dark:text-amber-300 mt-3">The start date is after the end date, so nothing can match.</p>}
+            </div>
+
+            {/* Total for what is currently shown */}
+            <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-700">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400" data-testid="expense-count">
+                {filtersActive ? `Showing ${filtered.length} of ${expenses.length} expense${expenses.length === 1 ? '' : 's'}` : `${expenses.length} expense${expenses.length === 1 ? '' : 's'} recorded`}
+              </span>
+              <span className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                {filtersActive ? 'Total for current filters: ' : 'Total of all expenses: '}
+                <span className={`text-lg font-black ${RED}`} data-testid="expense-filtered-total">{peso(filteredTotal)}</span>
+              </span>
+            </div>
+
+            {filtered.length === 0 ? (
+              <div className="p-10 text-center text-sm text-slate-500 dark:text-slate-400" data-testid="expense-empty">
+                {expenses.length === 0 ? 'No expenses recorded yet. Add your first expense above.' : 'No expenses match your search or filters.'}
+              </div>
+            ) : (
+              <>
+                {/* Table (tablet and larger) */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[720px]">
+                    <thead>
+                      <tr className="border-b text-xs uppercase font-bold text-slate-400 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/60">
+                        <th className="p-3 pl-4">Date</th>
+                        <th className="p-3">Category</th>
+                        <th className="p-3 w-1/3">Description</th>
+                        <th className="p-3 text-center">Qty</th>
+                        <th className="p-3">Payment</th>
+                        <th className="p-3 text-right">Amount</th>
+                        <th className="p-3 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map(e => (
+                        <tr key={e.id} data-testid="expense-row" className="border-b hover:bg-slate-50/80 dark:hover:bg-slate-700/30 transition-colors text-sm align-top">
+                          <td className="p-3 pl-4 text-slate-700 dark:text-slate-200 whitespace-nowrap">{formatDateKey(e.date) || '-'}</td>
+                          <td className="p-3 text-slate-600 dark:text-slate-300">{e.category}</td>
+                          <td className="p-3">
+                            <p className="font-semibold text-slate-800 dark:text-slate-100 break-words">{e.description}</p>
+                            {e.notes && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 break-words">{e.notes}</p>}
+                          </td>
+                          <td className="p-3 text-center text-slate-600 dark:text-slate-300">{e.quantity ? String(Number(e.quantity)) : '-'}</td>
+                          <td className="p-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">{paymentLabelOf(e) || '-'}</td>
+                          <td className={`p-3 text-right font-bold whitespace-nowrap ${RED}`} data-testid="expense-amount">{peso(expenseCents(e))}</td>
+                          <td className="p-3">
+                            <div className="flex items-center justify-center gap-1">
+                              <button onClick={() => startEdit(e)} className={`${iconBtn} text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40`} title="Edit"><Edit size={18}/></button>
+                              <button onClick={() => setToDelete(e)} className={`${iconBtn} text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30`} title="Delete"><Trash2 size={18}/></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Cards (phones) */}
+                <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-700">
+                  {filtered.map(e => (
+                    <div key={e.id} data-testid="expense-card" className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs text-slate-500 dark:text-slate-400">{formatDateKey(e.date) || '-'} · {e.category}</p>
+                          <p className="font-semibold text-slate-800 dark:text-slate-100 mt-0.5 break-words">{e.description}</p>
+                        </div>
+                        <p className={`font-black whitespace-nowrap ${RED}`} data-testid="expense-amount">{peso(expenseCents(e))}</p>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        {e.quantity ? `Qty ${String(Number(e.quantity))} · ` : ''}{paymentLabelOf(e) || '-'}
+                      </p>
+                      {e.notes && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 break-words">{e.notes}</p>}
+                      <div className="flex gap-2 mt-3">
+                        <button onClick={() => startEdit(e)} className="flex-1 flex items-center justify-center py-2 text-xs font-bold text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-800 rounded-xl"><Edit size={14} className="mr-1"/> Edit</button>
+                        <button onClick={() => setToDelete(e)} className="flex-1 flex items-center justify-center py-2 text-xs font-bold text-red-700 dark:text-red-300 border border-red-100 dark:border-red-800 rounded-xl"><Trash2 size={14} className="mr-1"/> Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Delete confirmation */}
+        {toDelete && (
+          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-slate-800 text-center">
+              <div className="w-12 h-12 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 size={24} /></div>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Delete Expense?</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                Delete <span className="font-bold text-slate-700 dark:text-slate-200">{toDelete.description}</span> (<span className={`font-bold ${RED}`}>{peso(expenseCents(toDelete))}</span>)? This can't be undone, and it will be removed from your totals and reports.
+              </p>
+              <div className="flex space-x-3 mt-6">
+                <button onClick={() => setToDelete(null)} className="flex-1 py-2.5 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+                <button onClick={confirmDelete} disabled={deleting} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold text-xs hover:bg-red-700 disabled:opacity-60 transition-colors shadow-md shadow-red-200">{deleting ? 'Deleting...' : 'Delete Expense'}</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -2568,6 +2983,15 @@ export default function InksurgePOS() {
           </button>
           
           <button 
+            onClick={() => { setActiveView('expenses'); setSidebarOpen(false); }}
+            className={`w-full flex items-center px-4 py-3 rounded-xl font-bold text-sm transition-all ${
+              activeView === 'expenses' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 dark:text-slate-400 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Wallet className="mr-3" size={18} /> Expenses / OPEX
+          </button>
+          
+          <button 
             onClick={() => { setActiveView('reports'); setSidebarOpen(false); }}
             className={`w-full flex items-center px-4 py-3 rounded-xl font-bold text-sm transition-all ${
               activeView === 'reports' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 dark:text-slate-400 hover:bg-slate-800 hover:text-white'
@@ -2630,6 +3054,7 @@ export default function InksurgePOS() {
         <div className="flex-1 min-h-0">
           {activeView === 'pos' && renderPOSView()}
           {activeView === 'orders' && <OrdersView />}
+          {activeView === 'expenses' && <ExpensesView />}
           {activeView === 'reports' && <ReportsView />}
           {activeView === 'settings' && <SettingsView />}
         </div>
